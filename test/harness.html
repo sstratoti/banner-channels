@@ -1,0 +1,82 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Alert Ticker Lite — harness</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #f4f5f7; padding: 24px; }
+    .card-wrap { max-width: 420px; margin: 0 0 24px; }
+    button { margin: 2px; }
+    /* minimal ha-card look for the harness */
+    ha-card { display: block; background: #fff; border-radius: 12px;
+              box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  </style>
+</head>
+<body>
+  <h3>Alert Ticker Lite — harness</h3>
+  <div>
+    <button id="b3">3 alerts</button>
+    <button id="b1">1 alert</button>
+    <button id="b0">0 (all-clear)</button>
+    <button id="bna">unavailable</button>
+    <button id="bmal">malformed items</button>
+  </div>
+  <div class="card-wrap"><div id="mount"></div></div>
+  <pre id="log"></pre>
+
+  <script type="module">
+    // 1) Provide a real Lit and expose it the way HA does (ha-panel-lovelace prototype).
+    import { LitElement, html, css }
+      from "https://cdn.jsdelivr.net/npm/lit@2/+esm";
+    LitElement.prototype.html = html;
+    LitElement.prototype.css = css;
+    if (!customElements.get("ha-panel-lovelace")) {
+      customElements.define("ha-panel-lovelace", class extends LitElement {});
+    }
+    // 2) Stub <ha-icon>.
+    if (!customElements.get("ha-icon")) {
+      customElements.define("ha-icon", class extends HTMLElement {
+        static get observedAttributes() { return ["icon"]; }
+        connectedCallback() { this._r(); }
+        attributeChangedCallback() { this._r(); }
+        _r() { this.textContent = "⬤ " + (this.getAttribute("icon") || ""); }
+      });
+    }
+    // 3) Log HA action events so taps are visible.
+    const log = (m) => (document.getElementById("log").textContent =
+      new Date().toLocaleTimeString() + "  " + m + "\n" + document.getElementById("log").textContent);
+    window.addEventListener("location-changed", () => log("navigate → " + location.pathname));
+    document.addEventListener("hass-more-info", (e) => log("more-info → " + e.detail.entityId));
+
+    // 4) Load the card under test.
+    await import("../alert-ticker-lite-card.js");
+
+    const mount = document.getElementById("mount");
+    let card;
+    function mk(state, alerts, cfg = {}) {
+      mount.innerHTML = "";
+      card = document.createElement("alert-ticker-lite-card");
+      card.setConfig({ entity: "sensor.alert_ticker", rotate_interval: 2,
+        tap_action: { action: "more-info" },
+        hold_action: { action: "navigate", navigation_path: "/lovelace/alerts" },
+        all_clear: { icon: "mdi:check-circle", text: "All clear" }, ...cfg });
+      mount.appendChild(card);
+      const states = state === null ? {} :
+        { "sensor.alert_ticker": { state, attributes: { alerts } } };
+      card.hass = { states, callService: (d, s, data) => log(`callService ${d}.${s} ${JSON.stringify(data)}`) };
+    }
+    const three = [
+      { icon: "mdi:water-alert", primary: "Basement leak", secondary: "Sensor 3 · 2m ago", color: "#e53935" },
+      { icon: "mdi:garage-open", primary: "Garage door open", secondary: "14 min" },
+      { icon: "mdi:battery-alert", primary: "Front lock battery low", secondary: "12%" },
+    ];
+    document.getElementById("b3").onclick = () => mk("3", three);
+    document.getElementById("b1").onclick = () => mk("1", [three[0]]);
+    document.getElementById("b0").onclick = () => mk("0", []);
+    document.getElementById("bna").onclick = () => mk("unavailable", []);
+    document.getElementById("bmal").onclick = () =>
+      mk("2", [three[0], { icon: "mdi:x" }, { primary: "no icon" }, three[1]]);
+    mk("3", three);
+  </script>
+</body>
+</html>

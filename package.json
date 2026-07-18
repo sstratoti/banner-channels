@@ -1,0 +1,11 @@
+{
+  "name": "alert-ticker-lite-card",
+  "version": "0.1.0",
+  "description": "Lightweight rotating alert ticker card for Home Assistant, fed by a Node-RED sensor.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/sstratoti/alert-ticker-lite-card"
+}

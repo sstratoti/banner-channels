@@ -1,0 +1,6 @@
+{
+  "name": "Alert Ticker Lite",
+  "filename": "alert-ticker-lite-card.js",
+  "render_readme": true,
+  "homeassistant": "2023.6.0"
+}

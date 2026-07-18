@@ -1,5 +1,5 @@
 import {
-  validateConfig, sanitizeAlerts, resolveCount, computeSignature,
+  validateConfig, sanitizeAlerts, resolveCount, computeSignature, nextIndex,
 } from "./lib/ticker-core.js";
 
 // Borrow the LitElement HA already loaded — no bundled Lit, no download.
@@ -40,8 +40,51 @@ class AlertTickerLiteCard extends LitElement {
   }
   get hass() { return this._hass; }
 
-  // Hook so Task 4 can restart rotation on data change without touching set hass.
-  _onDataChanged() {}
+  connectedCallback() {
+    super.connectedCallback();
+    this._visHandler = () => (document.hidden ? this._stopRotation() : this._restartRotation());
+    document.addEventListener("visibilitychange", this._visHandler);
+    this._restartRotation();
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._stopRotation();
+    if (this._visHandler) {
+      document.removeEventListener("visibilitychange", this._visHandler);
+      this._visHandler = null;
+    }
+  }
+
+  _onDataChanged() { this._restartRotation(); }
+
+  _stopRotation() {
+    if (this._timer) { clearInterval(this._timer); this._timer = null; }
+  }
+
+  _restartRotation() {
+    this._stopRotation();
+    if (document.hidden) return;
+    const n = this._alerts ? this._alerts.length : 0;
+    const ri = this._config ? this._config.rotate_interval : 0;
+    if (ri > 0 && n > 1) {
+      this._timer = setInterval(() => this._tick(), ri * 1000);
+    }
+  }
+
+  _tick() {
+    const advance = () => {
+      this._index = nextIndex(this._index, this._alerts.length);
+      this._rev++;
+    };
+    if (this._config.transition === "fade") {
+      this._fading = true;
+      this._rev++;
+      setTimeout(() => { this._fading = false; advance(); }, 180);
+    } else {
+      advance();
+    }
+  }
 
   render() {
     if (!this._config) return html``;

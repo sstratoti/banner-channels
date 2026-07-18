@@ -1,6 +1,7 @@
 import {
-  validateConfig, sanitizeAlerts, resolveCount, computeSignature, nextIndex,
+  validateConfig, sanitizeAlerts, resolveCount, computeSignature, nextIndex, resolveTapAction,
 } from "./lib/ticker-core.js";
+import { performAction } from "./lib/actions.js";
 
 // Borrow the LitElement HA already loaded — no bundled Lit, no download.
 const LitElement = Object.getPrototypeOf(customElements.get("ha-panel-lovelace"));
@@ -86,6 +87,38 @@ class AlertTickerLiteCard extends LitElement {
     }
   }
 
+  _currentAlert() {
+    return (this._alerts && this._alerts[this._index]) || {};
+  }
+
+  _runAction(kind) {
+    const action = resolveTapAction(this._currentAlert(), this._config, kind);
+    performAction(this, this._hass, action, this._config.entity);
+  }
+
+  _onPointerDown() {
+    this._holdFired = false;
+    this._holdTimer = setTimeout(() => {
+      this._holdFired = true;
+      this._runAction("hold");
+    }, 500);
+  }
+
+  _onPointerUp() {
+    if (this._holdTimer) { clearTimeout(this._holdTimer); this._holdTimer = null; }
+    if (this._holdFired) return;
+    if (this._clickTimer) {
+      clearTimeout(this._clickTimer);
+      this._clickTimer = null;
+      this._runAction("double_tap");
+    } else {
+      this._clickTimer = setTimeout(() => {
+        this._clickTimer = null;
+        this._runAction("tap");
+      }, 250);
+    }
+  }
+
   render() {
     if (!this._config) return html``;
     if (!this._available) {
@@ -94,7 +127,10 @@ class AlertTickerLiteCard extends LitElement {
     if (!this._alerts.length) {
       const ac = this._config.all_clear;
       if (!ac) return html`<ha-card style="display:none"></ha-card>`;
-      return html`<ha-card>
+      return html`<ha-card
+        @pointerdown=${() => this._onPointerDown()}
+        @pointerup=${() => this._onPointerUp()}
+        style="cursor:pointer">
         <div class="row clear">
           ${ac.icon ? html`<ha-icon icon="${ac.icon}"></ha-icon>` : ""}
           <div class="text"><div class="primary">${ac.text || "All clear"}</div></div>
@@ -102,7 +138,10 @@ class AlertTickerLiteCard extends LitElement {
       </ha-card>`;
     }
     const a = this._alerts[this._index] || this._alerts[0];
-    return html`<ha-card>
+    return html`<ha-card
+      @pointerdown=${() => this._onPointerDown()}
+      @pointerup=${() => this._onPointerUp()}
+      style="cursor:pointer">
       <div class="row ${this._fading ? "fade-out" : ""}">
         ${this._config.show_badge && this._count > 0
           ? html`<div class="badge">${this._count}</div>` : ""}

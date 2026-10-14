@@ -1,0 +1,12 @@
+{
+  "domain": "banner_channels",
+  "name": "Banner Channels",
+  "codeowners": ["@sstratoti"],
+  "config_flow": true,
+  "dependencies": ["http", "frontend", "lovelace", "panel_custom"],
+  "single_config_entry": true,
+  "documentation": "https://github.com/sstratoti/alert-ticker-lite-card",
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "version": "0.1.0"
+}

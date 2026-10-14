@@ -1,0 +1,13 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Banner Channels",
+        "description": "Create the Banner Channels editor and its channel sensors."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Banner Channels is already set up."
+    }
+  }
+}

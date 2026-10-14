@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from datetime import datetime
 from fnmatch import fnmatch
 from typing import Callable, NamedTuple
@@ -52,9 +53,22 @@ def in_window(now: datetime, start: str, end: str) -> bool:
     return current >= start_m or current < end_m
 
 
-def _usable(states: dict[str, Snap], entity_id: str) -> bool:
-    snap = states.get(entity_id)
-    return snap is not None and snap.state not in ("unavailable", "unknown")
+_OFFLINE = frozenset({"unavailable", "unknown"})
+SEVERITIES = ("info", "warning", "problem")
+_ICON = re.compile(r"^mdi:[a-z0-9-]+$")
+_HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+
+def _asks_about_offline(operator: str, value) -> bool:
+    return operator in ("is", "is_not") and str(value) in _OFFLINE
+
+
+def _comparable(state: str | None, operator: str, value) -> bool:
+    if state is None:
+        return False
+    if state in _OFFLINE and not _asks_about_offline(operator, value):
+        return False
+    return True
 
 
 def _fill(text: str, state: str, name: str) -> str:
@@ -82,6 +96,14 @@ def _line(text, state, name, entity_id, rule_id, render_template) -> str:
         )
     except Exception:
         return plain
+
+
+def _styled(text, pattern, state, name, entity_id, rule_id, render_template) -> str:
+    source = text or ""
+    if not _is_template(source):
+        return source
+    rendered = _line(source, state, name, entity_id, rule_id, render_template).strip()
+    return rendered if pattern.match(rendered) else ""
 
 
 def _resolve_action(action: dict | None, matched: str, kind: str) -> dict:
@@ -114,9 +136,10 @@ def _candidates(rule: dict, states: dict[str, Snap], skip: set[str]) -> list[str
     match = rule["match"]
     if match["kind"] == "entity":
         entity_id = match["entity_id"]
-        if not _usable(states, entity_id):
+        snap = states.get(entity_id)
+        if snap is None or not _comparable(snap.state, match["operator"], match["value"]):
             return []
-        if not compare(states[entity_id].state, match["operator"], match["value"]):
+        if not compare(snap.state, match["operator"], match["value"]):
             return []
         return [entity_id]
     exclude = set(match.get("exclude") or []) | skip
@@ -124,7 +147,7 @@ def _candidates(rule: dict, states: dict[str, Snap], skip: set[str]) -> list[str
     for entity_id, snap in states.items():
         if entity_id in exclude or not fnmatch(entity_id, match["pattern"]):
             continue
-        if snap.state in ("unavailable", "unknown"):
+        if not _comparable(snap.state, match["operator"], match["value"]):
             continue
         if compare(snap.state, match["operator"], match["value"]):
             found.append(entity_id)
@@ -140,9 +163,10 @@ def _rule_active(rule: dict, states: dict[str, Snap], now: datetime) -> bool:
     if not also:
         return True
     entity_id = also["entity_id"]
-    if not _usable(states, entity_id):
+    snap = states.get(entity_id)
+    if snap is None or not _comparable(snap.state, also["operator"], also["value"]):
         return False
-    return compare(states[entity_id].state, also["operator"], also["value"])
+    return compare(snap.state, also["operator"], also["value"])
 
 
 def _slide(rule: dict, entity_id: str, states: dict[str, Snap], render_template) -> dict:
@@ -150,16 +174,20 @@ def _slide(rule: dict, entity_id: str, states: dict[str, Snap], render_template)
     name = snap.name or entity_id
     slide = {
         "id": f"{rule['id']}:{entity_id}",
-        "icon": rule["icon"],
+        "icon": _styled(rule.get("icon"), _ICON, snap.state, name, entity_id, rule["id"], render_template),
         "primary": _line(rule.get("headline"), snap.state, name, entity_id, rule["id"], render_template),
         "secondary": _line(rule.get("subtext"), snap.state, name, entity_id, rule["id"], render_template),
         "tap_action": _resolve_action(rule.get("tap_action"), entity_id, "tap"),
         "hold_action": _resolve_action(rule.get("hold_action"), entity_id, "hold"),
     }
-    if rule.get("background"):
-        slide["background"] = rule["background"]
-    if rule.get("color"):
-        slide["color"] = rule["color"]
+    background = _styled(rule.get("background"), _HEX, snap.state, name, entity_id, rule["id"], render_template)
+    color = _styled(rule.get("color"), _HEX, snap.state, name, entity_id, rule["id"], render_template)
+    if background:
+        slide["background"] = background
+    if color:
+        slide["color"] = color
+    if rule.get("severity") in SEVERITIES:
+        slide["severity"] = rule["severity"]
     return slide
 
 
@@ -189,6 +217,7 @@ def evaluate(
             "show_badge": bool(channel.get("show_badge", True)),
             "empty": empty,
             "all_clear": channel.get("all_clear") if empty == "all_clear" else None,
+            "severity_styles": _severity_styles(channel),
             "alerts": alerts,
         }
     return feeds
@@ -205,6 +234,7 @@ def feed_signature(feed: dict) -> str:
                 alert.get("secondary") or "",
                 alert.get("background") or "",
                 alert.get("color") or "",
+                alert.get("severity") or "",
                 alert.get("tap_action"),
                 alert.get("hold_action"),
             ]
@@ -215,10 +245,32 @@ def feed_signature(feed: dict) -> str:
             feed["show_badge"],
             feed["empty"],
             feed["all_clear"],
+            _style_rows(feed.get("severity_styles")),
             alerts,
         ],
         sort_keys=True,
     )
+
+
+def _severity_styles(channel: dict) -> dict:
+    raw = channel.get("severity_styles") or {}
+    styles = {}
+    for level in SEVERITIES:
+        item = raw.get(level) if isinstance(raw, dict) and isinstance(raw.get(level), dict) else {}
+        styles[level] = {
+            "icon": str(item.get("icon") or "").strip(),
+            "color": str(item.get("color") or "").strip(),
+        }
+    return styles
+
+
+def _style_rows(styles) -> list:
+    source = styles if isinstance(styles, dict) else {}
+    rows = []
+    for level in SEVERITIES:
+        item = source.get(level) if isinstance(source.get(level), dict) else {}
+        rows.append([str(item.get("icon") or ""), str(item.get("color") or "")])
+    return rows
 
 
 def watched_entity_ids(

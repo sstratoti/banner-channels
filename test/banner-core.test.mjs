@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  validateConfig, feedSignature, nextIndex, viewMode, showBadge, describeAction,
+  validateConfig, stubEntity, CARD_EDITOR_SCHEMA, feedSignature, nextIndex, viewMode, showBadge, slideCounter, describeAction, resolveIcon, severityLook,
 } from "../custom_components/banner_channels/frontend/banner-core.js";
 
 test("validateConfig requires an entity string", () => {
@@ -14,6 +14,30 @@ test("validateConfig requires an entity string", () => {
   );
 });
 
+test("stubEntity prefers a Banner Channels sensor", () => {
+  assert.equal(stubEntity(), "");
+  assert.equal(
+    stubEntity({
+      entities: {
+        "sensor.banner_basement": { platform: "banner_channels" },
+        "sensor.other": { platform: "template" },
+      },
+    }),
+    "sensor.banner_basement",
+  );
+  assert.equal(
+    stubEntity({
+      states: {
+        "sensor.plain": { attributes: {} },
+        "sensor.banner_front": { attributes: { alerts: [], rotate_interval: 10 } },
+      },
+    }),
+    "sensor.banner_front",
+  );
+  assert.equal(CARD_EDITOR_SCHEMA[0].selector.entity.integration, "banner_channels");
+  assert.equal(CARD_EDITOR_SCHEMA[0].name, "entity");
+});
+
 test("viewMode distinguishes unavailable, hide, all-clear, and alerts", () => {
   assert.equal(viewMode("unavailable", {}), "unavailable");
   assert.equal(viewMode("unknown", {}), "unavailable");
@@ -21,6 +45,14 @@ test("viewMode distinguishes unavailable, hide, all-clear, and alerts", () => {
   assert.equal(viewMode("0", { empty: "all_clear", alerts: [], all_clear: { text: "Clear" } }), "all_clear");
   assert.equal(viewMode("1", { empty: "hide", alerts: [{ id: "a" }] }), "alerts");
   assert.equal(viewMode("unavailable", { alerts: [{ id: "a" }], empty: "hide" }), "unavailable");
+});
+
+test("slideCounter is the current slide over the total", () => {
+  assert.equal(slideCounter(0, 9), "1/9");
+  assert.equal(slideCounter(2, 9), "3/9");
+  assert.equal(slideCounter(0, 1), "");
+  assert.equal(slideCounter(0, 0), "");
+  assert.equal(slideCounter(20, 3), "1/3");
 });
 
 test("showBadge only when enabled and count is positive", () => {
@@ -56,6 +88,7 @@ test("signature and index follow the visible feed", () => {
     (feed) => { feed.alerts[0].background = "#0f0"; },
     (feed) => { feed.alerts[0].color = "#000"; },
     (feed) => { feed.alerts[0].icon = "mdi:window"; },
+    (feed) => { feed.alerts[0].severity = "warning"; },
     (feed) => { feed.alerts[0].secondary = "other"; },
     (feed) => { feed.alerts[0].tap_action = { action: "navigate", navigation_path: "/other" }; },
     (feed) => { feed.alerts[0].hold_action = { action: "toggle", entity: "switch.lamp" }; },
@@ -63,6 +96,7 @@ test("signature and index follow the visible feed", () => {
     (feed) => { feed.show_badge = false; },
     (feed) => { feed.empty = "all_clear"; },
     (feed) => { feed.all_clear = { text: "Quiet", icon: "mdi:check" }; },
+    (feed) => { feed.severity_styles = { warning: { icon: "mdi:alert", color: "#ff8800" } }; },
   ];
   for (const change of changes) {
     const copy = structuredClone(base);
@@ -72,6 +106,50 @@ test("signature and index follow the visible feed", () => {
   assert.equal(nextIndex(0, 3), 1);
   assert.equal(nextIndex(2, 3), 0);
   assert.equal(nextIndex(5, 0), 0);
+});
+
+test("severityLook labels three levels and defers to custom colors", () => {
+  assert.equal(severityLook({}), null);
+  assert.equal(severityLook({ severity: "" }), null);
+  assert.equal(severityLook({ severity: "critical" }), null);
+  assert.equal(severityLook({ severity: "toString" }), null);
+  assert.equal(severityLook(undefined), null);
+
+  const info = severityLook({ severity: "info" });
+  const warning = severityLook({ severity: "warning" });
+  const problem = severityLook({ severity: "problem" });
+  assert.deepEqual([info.label, warning.label, problem.label], ["Information", "Warning", "Problem"]);
+  assert.match(info.color, /--info-color/);
+  assert.match(warning.color, /--warning-color/);
+  assert.match(problem.color, /--error-color/);
+  assert.equal(warning.accent, warning.color);
+
+  const tinted = severityLook({ severity: "warning", color: "#ffffff" });
+  assert.equal(tinted.color, "#ffffff");
+  assert.equal(tinted.accent, warning.color);
+
+  const filled = severityLook({ severity: "problem", background: "#c62828" });
+  assert.equal(filled.accent, "");
+  assert.equal(filled.color, problem.color);
+
+  const styles = { warning: { icon: "mdi:alert-outline", color: "#ff8800" } };
+  const themed = severityLook({ severity: "warning" }, styles);
+  assert.equal(themed.color, "#ff8800");
+  assert.equal(themed.accent, "#ff8800");
+  assert.equal(themed.iconColor, "#ff8800");
+  const overridden = severityLook({ severity: "warning", color: "#ffffff" }, styles);
+  assert.equal(overridden.color, "#ffffff");
+  assert.equal(overridden.accent, "#ff8800");
+  assert.equal(overridden.iconColor, "");
+});
+
+test("resolveIcon prefers the alert, then the channel default, then a built-in", () => {
+  const styles = { warning: { icon: "mdi:alert-outline", color: "" } };
+  assert.equal(resolveIcon({ icon: "mdi:door-open", severity: "warning" }, styles), "mdi:door-open");
+  assert.equal(resolveIcon({ icon: "", severity: "warning" }, styles), "mdi:alert-outline");
+  assert.equal(resolveIcon({ severity: "info" }, styles), "mdi:information");
+  assert.equal(resolveIcon({ severity: "problem" }, {}), "mdi:alert-circle");
+  assert.equal(resolveIcon({ icon: "", severity: "" }, styles), "");
 });
 
 test("describeAction chooses the side effect and ignores none", () => {

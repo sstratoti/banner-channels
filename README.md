@@ -13,12 +13,12 @@ Banner Channels is a Home Assistant integration. It decides which alerts are act
 
 After the integration is added, the card module is:
 
-`/banner_channels/banner-channel-card.js?v=0.1.0`
+`/banner_channels/banner-channel-card.js?v=0.2.0`
 
 YAML-mode Lovelace adds that URL as a module resource:
 
 ```yaml
-url: /banner_channels/banner-channel-card.js?v=0.1.0
+url: /banner_channels/banner-channel-card.js?v=0.2.0
 type: module
 ```
 
@@ -43,9 +43,9 @@ Create a channel: name, rotate interval, badge, and empty behavior. Saving it cr
 }
 ```
 
-`rotate_interval` is seconds between slides. `0` keeps the first slide on screen. `show_badge` shows the number of active alerts. `empty` is `hide` or `all_clear`.
+`rotate_interval` is seconds between slides. `0` keeps the first slide on screen. `show_badge` shows which slide is on screen, such as `2/9`, at the top right, and hides that counter when only one alert is active. `empty` is `hide` or `all_clear`. `severity_styles` sets a default icon and color for Information, Warning, and Problem. A rule's own icon or text color replaces those defaults.
 
-Create a rule and tag it with one or more channels. A rule with no channel tags produces no slides. Fields: headline, subtext, icon, background and text colors, channels, match, an optional time window, an optional second condition, and tap and hold. In the headline or the subtext, `{name}` and `{state}` are replaced for each match. Text that contains `{{` or `{%` is a Jinja template, with variables `state`, `entity_id`, `name`, and `rule_id`.
+Create a rule and tag it with one or more channels. A rule with no channel tags produces no slides. Fields: headline, subtext, icon, background and text colors, channels, match, an optional time window, an optional second condition, and tap and hold. In the headline or the subtext, `{name}` and `{state}` are replaced for each match. Text that contains `{{` or `{%` is a Jinja template, with variables `state`, `entity_id`, `name`, and `rule_id`. The icon, background, and text color accept the same templates. A rendered icon must be an `mdi:` name. A rendered color must look like `#c62828`.
 
 ```json
 {
@@ -74,7 +74,7 @@ Create a rule and tag it with one or more channels. A rule with no channel tags 
 }
 ```
 
-Add a dashboard card of type `custom:banner-channel`. Its only field is `entity`, set to that channel's sensor:
+On a dashboard, choose Add card and pick Banner Channel. The editor asks for the channel sensor. The same card in YAML is:
 
 ```yaml
 type: custom:banner-channel

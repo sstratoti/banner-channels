@@ -21,7 +21,7 @@ from homeassistant.helpers.template import Template
 from .const import DOMAIN, PLATFORMS
 from .runtime import BannerRuntime
 from .store import BannerStore
-from .validate import slugify, validate_channel, validate_rule
+from .validate import severity_styles, slugify, validate_channel, validate_rule
 
 _LOGGER = logging.getLogger(__name__)
 _FRONTEND_DIR = Path(__file__).parent / "frontend"
@@ -78,6 +78,7 @@ def _prepare_channel(hass, runtime, record):
         current_entity_id = None
     show_badge = record.get("show_badge", True)
     all_clear = record.get("all_clear") or {}
+    styles, _style_errors = severity_styles(record.get("severity_styles"))
     prepared = {
         "id": channel_id,
         "name": name,
@@ -90,6 +91,7 @@ def _prepare_channel(hass, runtime, record):
             "icon": (all_clear.get("icon") or "").strip(),
             "text": (all_clear.get("text") or "").strip(),
         },
+        "severity_styles": styles,
     }
     errors = validate_channel(prepared, _taken_entity_ids(hass, channels, current_entity_id))
     return (None, errors) if errors else (prepared, {})
@@ -113,6 +115,7 @@ def _prepare_rule(hass, runtime, record):
         else:
             exclude = [str(item).strip() for item in exclude if str(item).strip()]
         match["exclude"] = exclude
+    severity = record.get("severity") or ""
     prepared = {
         "id": rule_id,
         "position": position,
@@ -122,6 +125,7 @@ def _prepare_rule(hass, runtime, record):
         "icon": (record.get("icon") or "").strip(),
         "background": (record.get("background") or "").strip(),
         "color": (record.get("color") or "").strip(),
+        "severity": severity.strip() if isinstance(severity, str) else severity,
         "match": match,
     }
     if record.get("when"):
@@ -133,7 +137,7 @@ def _prepare_rule(hass, runtime, record):
     if record.get("hold_action"):
         prepared["hold_action"] = record["hold_action"]
     errors = validate_rule(prepared)
-    for key in ("headline", "subtext"):
+    for key in ("headline", "subtext", "icon", "background", "color"):
         text = prepared[key]
         if key in errors or ("{{" not in text and "{%" not in text):
             continue

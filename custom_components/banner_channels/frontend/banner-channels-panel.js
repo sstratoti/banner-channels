@@ -1,3 +1,5 @@
+import { SEVERITIES, SEVERITY_ICONS, resolveIcon, severityLook } from "./banner-core.js";
+
 export const HELP = {
   landing:
     "A channel is one banner. A rule is one alert. Tag a rule with every channel that should show it, then add a Banner Channel card and pick that channel's sensor.",
@@ -6,18 +8,24 @@ export const HELP = {
   channel: {
     name: "Shown in the sidebar and as the sensor's friendly name. Renaming does not change the entity id.",
     rotate_interval: "Seconds between slides. 0 keeps the first slide on screen.",
-    show_badge: "Shows the number of active alerts on the banner.",
+    show_badge: "Shows which slide is on screen, such as 2/9, at the top right. Hidden when there is only one alert.",
     empty: "Hide removes the card when nothing matches. All clear shows a message instead.",
     all_clear_text: "Shown when this channel has no matching alerts.",
     all_clear_icon: "Optional icon beside the all-clear text.",
+    severity_styles:
+      "Default icon and color for each label on this channel. A rule's own icon or text color replaces them.",
   },
   rule: {
     headline:
       "Main line. {name} and {state} are replaced for each match. Text with {{ or {% is a Jinja template. Variables: state, entity_id, name, rule_id.",
+    severity: "Optional label above the headline. Leave blank for none.",
     subtext: "Second line. Same replacements and templates as the headline.",
-    icon: "An mdi icon, such as mdi:door-open. It uses the text color.",
-    background: "Banner color. Leave blank to use the dashboard theme.",
-    color: "Text and icon color. Leave blank to use the dashboard theme.",
+    icon:
+      "An mdi icon, such as mdi:door-open. Leave blank to use the severity default. Text with {{ or {% is a Jinja template. Variables: state, entity_id, name, rule_id. It uses the text color.",
+    background:
+      "Banner color, such as #c62828. Text with {{ or {% is a Jinja template that must render a color like #c62828. Leave blank to use the dashboard theme.",
+    color:
+      "Text and icon color, such as #ffffff. Text with {{ or {% is a Jinja template that must render a color like #ffffff. Leave blank to use the severity color, or the dashboard theme.",
     channels: "This alert appears on every channel you check.",
     match: "One entity, or a pattern that becomes one slide per matching entity.",
     operator: "Compared with the entity state. Numeric operators need a number.",
@@ -47,6 +55,7 @@ const ACTIONS = [
   ["call-service", "call-service"],
   ["none", "none"],
 ];
+const SEVERITY_OPTIONS = [["", ""], ...Object.entries(SEVERITIES).map(([value, level]) => [value, level.label])];
 
 export function moveItem(list, from, to) {
   const next = list.slice();
@@ -111,7 +120,21 @@ export function channelRecord(draft) {
       icon: draft.all_clear_icon ?? "",
     };
   }
+  record.severity_styles = stylesRecord(draft.severity_styles);
   return record;
+}
+
+export function stylesRecord(styles) {
+  const source = styles || {};
+  const result = {};
+  for (const level of Object.keys(SEVERITIES)) {
+    const item = source[level] || {};
+    result[level] = {
+      icon: String(item.icon || "").trim(),
+      color: String(item.color || "").trim(),
+    };
+  }
+  return result;
 }
 
 export function ruleRecord(draft) {
@@ -144,6 +167,7 @@ export function ruleRecord(draft) {
     icon: draft.icon ?? "",
     background: (draft.background || "").trim(),
     color: (draft.color || "").trim(),
+    severity: draft.severity || "",
     channels: draft.channels || [],
     match: storedMatch,
   };
@@ -188,6 +212,12 @@ function input(type, value) {
   node.type = type;
   node.value = value == null ? "" : String(value);
   return node;
+}
+
+export function displayValue(value) {
+  const text = String(value || "").trim();
+  if (text.includes("{{") || text.includes("{%")) return "";
+  return text;
 }
 
 function textbox(value) {
@@ -250,6 +280,7 @@ function channelDraft(record) {
       empty: "hide",
       all_clear_text: "",
       all_clear_icon: "",
+      severity_styles: stylesRecord(null),
     };
   }
   return {
@@ -260,6 +291,7 @@ function channelDraft(record) {
     empty: record.empty || "hide",
     all_clear_text: (record.all_clear && record.all_clear.text) || "",
     all_clear_icon: (record.all_clear && record.all_clear.icon) || "",
+    severity_styles: stylesRecord(record.severity_styles),
   };
 }
 
@@ -271,6 +303,7 @@ function ruleDraft(record) {
       icon: "",
       background: "",
       color: "",
+      severity: "",
       channels: [],
       match: { kind: "entity", entity_id: "", pattern: "", operator: "is", value: "", excludeText: "" },
       whenEnabled: false,
@@ -292,6 +325,7 @@ function ruleDraft(record) {
     icon: record.icon || "",
     background: record.background || "",
     color: record.color || "",
+    severity: record.severity || "",
     channels: (record.channels || []).slice(),
     match: {
       kind: match.kind || "entity",
@@ -334,16 +368,21 @@ button.warn { background: transparent; color: var(--error-color, #b00020); borde
 .label { font-weight: 500; }
 input[type="text"], input[type="number"], select, textarea { margin-top: 6px; font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--divider-color, #e0e0e0); background: var(--card-background-color, #fff); color: inherit; width: 100%; box-sizing: border-box; }
 textarea { min-height: 72px; resize: vertical; }
+textarea.compact { min-height: 40px; }
+.color-row textarea { margin-top: 0; min-height: 40px; }
 .check { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .check input { width: auto; }
 .color-row { display: flex; gap: 8px; align-items: center; }
 .color-row input[type="color"] { width: 48px; height: 36px; padding: 0; border: 0; background: transparent; }
 .actions { display: flex; gap: 8px; margin-top: 24px; }
-.preview { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 8px; min-height: 56px; background: var(--card-background-color, #fff); border: 1px solid var(--divider-color, #e0e0e0); }
-.preview ha-icon { --mdc-icon-size: 24px; }
+.preview { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; min-height: 56px; box-sizing: border-box; background: var(--card-background-color, #fff); border: 1px solid var(--divider-color, #e0e0e0); }
+.preview.accent { border-left: 3px solid transparent; padding-left: 11px; }
+.preview ha-icon { --mdc-icon-size: 28px; flex: 0 0 auto; }
 .preview .copy { display: flex; flex-direction: column; min-width: 0; }
-.preview .headline { font-weight: 600; }
-.preview .subtext { font-size: 0.9rem; opacity: 0.9; }
+.preview .severity, .preview .headline, .preview .subtext { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.preview .severity { font-size: 10px; font-weight: 700; line-height: 1.3; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 1px; }
+.preview .headline { font-size: 16px; font-weight: 600; line-height: 1.3; }
+.preview .subtext { font-size: 13px; line-height: 1.35; opacity: 0.75; }
 .back { margin-bottom: 8px; }
 `;
 
@@ -511,8 +550,8 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       badge.checked = Boolean(draft.show_badge);
       badge.addEventListener("change", () => { draft.show_badge = badge.checked; });
       const badgeRow = el("label", "check");
-      badgeRow.append(badge, el("span", null, "Show the alert count"));
-      page.append(field("Show badge", badgeRow, HELP.channel.show_badge, []));
+      badgeRow.append(badge, el("span", null, "Show the slide counter"));
+      page.append(field("Slide counter", badgeRow, HELP.channel.show_badge, []));
 
       const empty = select([["hide", "Hide"], ["all_clear", "All clear"]], draft.empty);
       empty.addEventListener("change", () => {
@@ -529,6 +568,18 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
         icon.placeholder = "mdi:check";
         icon.addEventListener("input", () => { draft.all_clear_icon = icon.value; });
         page.append(field("All-clear icon", icon, HELP.channel.all_clear_icon, [errors.all_clear_icon]));
+      }
+
+      page.append(el("h2", "section-head", "Severity defaults"));
+      page.append(helpNode(HELP.channel.severity_styles));
+      if (errors.severity_styles) page.append(el("p", "error", errors.severity_styles));
+      for (const [level, meta] of Object.entries(SEVERITIES)) {
+        const style = draft.severity_styles[level];
+        const icon = input("text", style.icon);
+        icon.placeholder = SEVERITY_ICONS[level];
+        icon.addEventListener("input", () => { style.icon = icon.value; });
+        page.append(field(`${meta.label} icon`, icon, "", [errors[`severity_${level}_icon`], errors[`severity_${level}`]]));
+        page.append(this._styleColorField(level, `${meta.label} color`, errors[`severity_${level}_color`]));
       }
 
       this._saveBar(
@@ -548,12 +599,18 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       headline.addEventListener("input", () => { draft.headline = headline.value; this._syncPreview(); });
       page.append(field("Headline", headline, HELP.rule.headline, [errors.headline]));
 
+      const severity = select(SEVERITY_OPTIONS, draft.severity);
+      severity.addEventListener("change", () => { draft.severity = severity.value; this._syncPreview(); });
+      page.append(field("Severity", severity, HELP.rule.severity, [errors.severity]));
+
       const subtext = textbox(draft.subtext);
       subtext.addEventListener("input", () => { draft.subtext = subtext.value; this._syncPreview(); });
       page.append(field("Subtext", subtext, HELP.rule.subtext, [errors.subtext]));
 
-      const icon = input("text", draft.icon);
+      const icon = textbox(draft.icon);
+      icon.classList.add("compact");
       icon.placeholder = "mdi:door-open";
+      icon.spellcheck = false;
       icon.addEventListener("input", () => { draft.icon = icon.value; this._syncPreview(); });
       page.append(field("Icon", icon, HELP.rule.icon, [errors.icon]));
 
@@ -585,16 +642,32 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       const row = el("div", "preview");
       const icon = document.createElement("ha-icon");
       const copy = el("div", "copy");
+      const background = displayValue(draft.background);
+      const color = displayValue(draft.color);
+      const styles = this._stylesFor(draft);
+      const look = severityLook({ severity: draft.severity, background, color }, styles);
+      if (look) {
+        const label = el("div", "severity", look.label);
+        label.style.color = look.color;
+        copy.append(label);
+        if (look.accent) {
+          row.classList.add("accent");
+          row.style.borderLeftColor = look.accent;
+        }
+      }
       copy.append(el("div", "headline"), el("div", "subtext"));
       row.append(icon, copy);
-      const background = (draft.background || "").trim();
-      const color = (draft.color || "").trim();
       if (background) row.style.background = background;
       if (color) {
         row.style.color = color;
         icon.style.color = color;
+      } else if (look && look.iconColor) {
+        icon.style.color = look.iconColor;
       }
-      const iconName = (draft.icon || "").trim() || "mdi:information";
+      const iconName = resolveIcon(
+        { icon: displayValue(draft.icon), severity: draft.severity },
+        styles,
+      ) || "mdi:information";
       icon.icon = iconName;
       icon.setAttribute("icon", iconName);
       copy.querySelector(".headline").textContent = (draft.headline || "").trim() || "Headline";
@@ -609,6 +682,36 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       preview.replaceWith(next);
     }
 
+    _stylesFor(draft) {
+      const ids = draft.channels || [];
+      const channels = (this._data && this._data.channels) || [];
+      const match = channels.find((channel) => ids.includes(channel.id));
+      return (match && match.severity_styles) || {};
+    }
+
+    _styleColorField(level, label, error) {
+      const style = this._draft.severity_styles[level];
+      const row = el("div", "color-row");
+      const picker = document.createElement("input");
+      picker.type = "color";
+      const current = (style.color || "").trim();
+      picker.value = /^#[0-9A-Fa-f]{6}$/.test(current) ? current : "#000000";
+      const text = input("text", current);
+      text.placeholder = "#c62828";
+      text.spellcheck = false;
+      const write = (value) => {
+        style.color = value;
+        if (/^#[0-9A-Fa-f]{6}$/.test(value.trim())) picker.value = value.trim();
+      };
+      picker.addEventListener("input", () => {
+        text.value = picker.value;
+        write(picker.value);
+      });
+      text.addEventListener("input", () => write(text.value));
+      row.append(picker, text);
+      return field(label, row, "", [error]);
+    }
+
     _colorField(label, key, help, error) {
       const draft = this._draft;
       const row = el("div", "color-row");
@@ -616,7 +719,8 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       picker.type = "color";
       const current = (draft[key] || "").trim();
       picker.value = /^#[0-9A-Fa-f]{6}$/.test(current) ? current : "#000000";
-      const text = input("text", current);
+      const text = textbox(current);
+      text.classList.add("compact");
       text.placeholder = "#c62828";
       text.spellcheck = false;
       picker.addEventListener("input", () => {

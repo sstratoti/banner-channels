@@ -1,4 +1,4 @@
-from validate import slugify, validate_channel, validate_rule
+from validate import severity_styles, slugify, validate_channel, validate_rule
 
 
 def test_slugify():
@@ -33,6 +33,50 @@ def test_channel_rejects_bad_interval_and_all_clear():
     assert "all_clear_text" in errors
 
 
+def test_channel_severity_styles_keep_icon_and_color():
+    styles, errors = severity_styles(
+        {
+            "info": {"icon": " mdi:information ", "color": "#039be5"},
+            "warning": {"icon": "alert", "color": "orange"},
+            "problem": [],
+        }
+    )
+    assert errors["severity_warning_icon"]
+    assert errors["severity_warning_color"]
+    assert errors["severity_problem"]
+    assert styles["info"] == {"icon": "mdi:information", "color": "#039be5"}
+    assert validate_channel(
+        {"name": "Tablets", "severity_styles": {"warning": {"icon": "mdi:alert", "color": "#ff8800"}}},
+        set(),
+    ) == {}
+    assert "severity_styles" in validate_channel({"name": "Tablets", "severity_styles": "nope"}, set())
+
+
+def test_rule_icon_can_be_blank_when_a_severity_is_set():
+    base = {
+        "headline": "Front Door",
+        "icon": "",
+        "match": {"kind": "entity", "entity_id": "binary_sensor.front_door", "operator": "is", "value": "on"},
+    }
+    assert "icon" in validate_rule(base)
+    assert validate_rule({**base, "severity": "warning"}) == {}
+    assert "icon" in validate_rule({**base, "severity": "warning", "icon": "door"})
+
+
+def test_icon_and_colors_accept_templates():
+    base = {
+        "headline": "Front Door",
+        "icon": "{{ 'mdi:door-open' if state == 'on' else 'mdi:door-closed' }}",
+        "background": "{{ '#c62828' }}",
+        "color": "{% if state == 'on' %}#ffffff{% else %}#000000{% endif %}",
+        "match": {"kind": "entity", "entity_id": "binary_sensor.front_door", "operator": "is", "value": "on"},
+    }
+    assert validate_rule(base) == {}
+    assert "icon" in validate_rule({**base, "icon": "{{ 'mdi:door' }}" + ("x" * 1000)})
+    assert "background" in validate_rule({**base, "background": "red"})
+    assert "color" in validate_rule({**base, "color": "#fff"})
+
+
 def test_rule_requires_headline_icon_and_match():
     errors = validate_rule(
         {
@@ -46,6 +90,19 @@ def test_rule_requires_headline_icon_and_match():
     assert "icon" in errors
     assert "background" in errors
     assert "match_entity" in errors
+
+
+def test_rule_severity_is_blank_or_one_of_three():
+    base = {
+        "headline": "Front Door",
+        "icon": "mdi:door-open",
+        "match": {"kind": "entity", "entity_id": "binary_sensor.front_door", "operator": "is", "value": "on"},
+    }
+    for value in (None, "", "info", "warning", "problem"):
+        assert validate_rule({**base, "severity": value}) == {}
+    assert validate_rule(base) == {}
+    for value in ("critical", "Warning", "error", ["info"], 3):
+        assert "severity" in validate_rule({**base, "severity": value})
 
 
 def test_rule_accepts_a_template_longer_than_a_plain_headline():

@@ -4,16 +4,19 @@
   <meta charset="utf-8" />
   <title>Banner Channel — harness</title>
   <style>
-    body { font-family: system-ui, sans-serif; background: #f4f5f7; padding: 24px; --primary-color: #03a9f4; }
-    .card-wrap { max-width: 420px; margin: 0 0 24px; }
+    body { font-family: system-ui, sans-serif; background: #f4f5f7; padding: 24px; color: #1f1f1f; --primary-color: #03a9f4; --secondary-text-color: #727272; --info-color: #039be5; --warning-color: #ffa600; --error-color: #db4437; }
+    h3 { margin: 28px 0 8px; }
+    .card-wrap { max-width: 480px; margin: 0 0 8px; }
+    .caption { margin: 0 0 18px; color: #5f6368; font-size: 13px; }
     button { margin: 2px; }
-    /* minimal ha-card look for the harness */
-    ha-card { display: block; background: #fff; border-radius: 12px;
-              box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+    ha-card { display: block; background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+    ha-icon { display: inline-flex; width: 28px; height: 28px; border-radius: 50%; background: currentColor; color: #212121; }
   </style>
 </head>
 <body>
-  <h3>Banner Channel — harness</h3>
+  <h3>Still frames</h3>
+  <div id="gallery"></div>
+  <h3>Live rotation</h3>
   <div>
     <button id="b3">three alerts</button>
     <button id="b1">one alert</button>
@@ -39,7 +42,7 @@
         static get observedAttributes() { return ["icon"]; }
         connectedCallback() { this._r(); }
         attributeChangedCallback() { this._r(); }
-        _r() { this.textContent = "⬤ " + (this.getAttribute("icon") || ""); }
+        _r() { this.title = this.getAttribute("icon") || ""; }
       });
     }
     // 3) Log HA action events so taps are visible.
@@ -72,6 +75,7 @@
         secondary: "Sensor 3 · 2m ago",
         background: "#ffebee",
         color: "#e53935",
+        severity: "problem",
         tap_action: { action: "more-info", entity: "binary_sensor.basement_leak" },
       },
       {
@@ -79,6 +83,7 @@
         icon: "mdi:garage-open",
         primary: "Garage door open",
         secondary: "14 min",
+        severity: "warning",
         tap_action: { action: "more-info", entity: "cover.garage_door" },
       },
       {
@@ -86,6 +91,7 @@
         icon: "mdi:battery-alert",
         primary: "Front lock battery low",
         secondary: "12%",
+        severity: "info",
         tap_action: { action: "more-info", entity: "sensor.front_lock_battery" },
       },
     ];
@@ -108,6 +114,74 @@
       all_clear: { icon: "mdi:check-circle", text: "All clear" },
     }));
     document.getElementById("bna").onclick = () => mk("unavailable", feed({ alerts: [] }));
+
+    const nine = Array.from({ length: 9 }, (_, index) => ({
+      ...three[index % three.length],
+      id: "slide-" + (index + 1),
+      primary: three[index % three.length].primary + " " + (index + 1),
+    }));
+    const gallery = document.getElementById("gallery");
+    function still(caption, state, attributes, index) {
+      const wrap = document.createElement("div");
+      wrap.className = "card-wrap";
+      const note = document.createElement("p");
+      note.className = "caption";
+      note.textContent = caption;
+      gallery.append(wrap, note);
+      const stillCard = document.createElement("banner-channel-card");
+      stillCard.setConfig({ entity });
+      wrap.appendChild(stillCard);
+      stillCard.hass = {
+        states: { [entity]: { state, attributes } },
+        callService: () => {},
+      };
+      if (index) {
+        stillCard._index = index;
+        stillCard.requestUpdate();
+      }
+    }
+    still("Slide 3 of 9. The counter is the current slide, not the old total.", "9", feed({ rotate_interval: 0, alerts: nine }), 2);
+    still("Warning, no custom color. Accent bar on the left.", "3", feed({ rotate_interval: 0, alerts: three }), 1);
+    still("One alert. The counter stays hidden.", "1", feed({ rotate_interval: 0, alerts: [three[2]] }));
+    const defaults = {
+      info: { icon: "mdi:information-outline", color: "#0277bd" },
+      warning: { icon: "mdi:alert-outline", color: "#ef6c00" },
+      problem: { icon: "mdi:alert-circle", color: "#c62828" },
+    };
+    still("Channel defaults. Blank rule icon and no text color use the warning icon and color.", "1", feed({
+      rotate_interval: 0,
+      severity_styles: defaults,
+      alerts: [{
+        id: "default-warning",
+        icon: "",
+        primary: "Garage door open",
+        secondary: "Uses the channel warning default",
+        severity: "warning",
+      }],
+    }));
+    still("The rule icon and text color replace the channel defaults.", "1", feed({
+      rotate_interval: 0,
+      severity_styles: defaults,
+      alerts: [{
+        id: "override",
+        icon: "mdi:garage-open",
+        primary: "Garage door open",
+        secondary: "Rule icon and purple text win",
+        color: "#8e24aa",
+        severity: "warning",
+      }],
+    }));
+    still("Custom text color. The label and the counter use that color.", "2", feed({
+      rotate_interval: 0,
+      alerts: [{
+        id: "custom",
+        icon: "mdi:alert",
+        primary: "Problem, custom text color",
+        secondary: "Label and counter follow #8e24aa",
+        color: "#8e24aa",
+        severity: "problem",
+      }, three[1]],
+    }));
     mk("3", feed({ alerts: three }));
   </script>
 </body>

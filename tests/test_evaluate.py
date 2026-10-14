@@ -92,6 +92,42 @@ def test_entity_match_builds_one_slide_and_defaults_tap():
     assert feeds["tablets"]["all_clear"] is None
 
 
+def test_severity_is_copied_only_when_known():
+    now = datetime(2026, 10, 13, 12, 0, tzinfo=TZ)
+    states = {"binary_sensor.front_door": Snap("on", "Front Door")}
+
+    def slide(**overrides):
+        return evaluate([_channel()], [_door_rule(**overrides)], states, now)["tablets"]["alerts"][0]
+
+    assert slide(severity="warning")["severity"] == "warning"
+    assert slide(severity="info")["severity"] == "info"
+    assert slide(severity="problem")["severity"] == "problem"
+    assert "severity" not in slide(severity="")
+    assert "severity" not in slide()
+    assert "severity" not in slide(severity="critical")
+    assert "severity" not in slide(severity=["warning"])
+
+
+def test_severity_styles_travel_with_the_channel_feed():
+    now = datetime(2026, 10, 13, 12, 0, tzinfo=TZ)
+    channel = _channel()
+    channel["severity_styles"] = {
+        "warning": {"icon": " mdi:alert ", "color": " #ff8800 "},
+        "info": "nope",
+    }
+    feed = evaluate(
+        [channel],
+        [_door_rule(icon="", severity="warning")],
+        {"binary_sensor.front_door": Snap("on", "Front Door")},
+        now,
+    )["tablets"]
+    assert feed["severity_styles"]["warning"] == {"icon": "mdi:alert", "color": "#ff8800"}
+    assert feed["severity_styles"]["info"] == {"icon": "", "color": ""}
+    assert feed["severity_styles"]["problem"] == {"icon": "", "color": ""}
+    assert feed["alerts"][0]["icon"] == ""
+    assert feed_signature(feed) != feed_signature({**feed, "severity_styles": {}})
+
+
 def test_blank_tap_becomes_more_info_and_hold_blank_is_none():
     now = datetime(2026, 10, 13, 12, 0, tzinfo=TZ)
     states = {"binary_sensor.front_door": Snap("on", "Front Door")}
@@ -122,6 +158,103 @@ def test_unavailable_and_failed_also_suppress_the_slide():
         now,
     )
     assert missing["tablets"]["alerts"] == []
+
+
+def test_explicit_unavailable_match_shows_a_slide():
+    now = datetime(2026, 10, 13, 12, 0, tzinfo=TZ)
+    vacuum = _door_rule(
+        id="vacuum",
+        headline="Roborock Vacuum",
+        subtext="Unavailable — Check Dock",
+        match={
+            "kind": "entity",
+            "entity_id": "vacuum.roborock_vacuum",
+            "operator": "is",
+            "value": "unavailable",
+        },
+    )
+    shown = evaluate(
+        [_channel()],
+        [vacuum],
+        {"vacuum.roborock_vacuum": Snap("unavailable", "Roborock")},
+        now,
+    )["tablets"]["alerts"]
+    assert [alert["secondary"] for alert in shown] == ["Unavailable — Check Dock"]
+
+    idle = evaluate(
+        [_channel()],
+        [vacuum],
+        {"vacuum.roborock_vacuum": Snap("idle", "Roborock")},
+        now,
+    )
+    assert idle["tablets"]["alerts"] == []
+    assert evaluate([_channel()], [vacuum], {}, now)["tablets"]["alerts"] == []
+
+    door = evaluate(
+        [_channel()],
+        [_door_rule()],
+        {"binary_sensor.front_door": Snap("unavailable", "Front Door")},
+        now,
+    )
+    assert door["tablets"]["alerts"] == []
+
+    not_offline = _door_rule(
+        match={
+            "kind": "entity",
+            "entity_id": "vacuum.roborock_vacuum",
+            "operator": "is_not",
+            "value": "unavailable",
+        }
+    )
+    online = evaluate(
+        [_channel()],
+        [not_offline],
+        {"vacuum.roborock_vacuum": Snap("docked", "Roborock")},
+        now,
+    )
+    assert len(online["tablets"]["alerts"]) == 1
+    offline = evaluate(
+        [_channel()],
+        [not_offline],
+        {"vacuum.roborock_vacuum": Snap("unavailable", "Roborock")},
+        now,
+    )
+    assert offline["tablets"]["alerts"] == []
+
+    gated = _door_rule(
+        also={"entity_id": "vacuum.roborock_vacuum", "operator": "is", "value": "unknown"}
+    )
+    waiting = evaluate(
+        [_channel()],
+        [gated],
+        {
+            "binary_sensor.front_door": Snap("on", "Front Door"),
+            "vacuum.roborock_vacuum": Snap("unknown", "Roborock"),
+        },
+        now,
+    )
+    assert len(waiting["tablets"]["alerts"]) == 1
+
+    pattern = _door_rule(
+        id="offline",
+        match={
+            "kind": "filter",
+            "pattern": "vacuum.*",
+            "operator": "is",
+            "value": "unavailable",
+            "exclude": [],
+        },
+    )
+    found = evaluate(
+        [_channel()],
+        [pattern],
+        {
+            "vacuum.roborock_vacuum": Snap("unavailable", "Roborock"),
+            "vacuum.other": Snap("docked", "Other"),
+        },
+        now,
+    )["tablets"]["alerts"]
+    assert [alert["id"] for alert in found] == ["offline:vacuum.roborock_vacuum"]
 
 
 def test_time_window_and_placeholders():
@@ -170,6 +303,44 @@ def test_either_line_can_be_a_template_and_errors_fall_back():
     kept = evaluate([_channel()], [plain], states, now, render_template=unused)
     assert kept["tablets"]["alerts"][0]["primary"] == "Front Door"
     assert kept["tablets"]["alerts"][0]["secondary"] == "on"
+
+
+def test_icon_and_colors_render_templates_and_drop_invalid_results():
+    rule = _door_rule(
+        icon="{{ 'mdi:door-open' if state == 'on' else 'mdi:door-closed' }}",
+        background="{{ '#c62828' if state == 'on' else '#2e7d32' }}",
+        color="{{ '#ffffff' if state == 'on' else '#000000' }}",
+    )
+    states = {"binary_sensor.front_door": Snap("on", "Front Door")}
+    now = datetime(2026, 10, 13, 12, 0, tzinfo=TZ)
+
+    def render(template, variables):
+        if template.startswith("{{ 'mdi:"):
+            return "mdi:door-open"
+        if "#c62828" in template:
+            return "#c62828"
+        return "#ffffff"
+
+    slide = evaluate([_channel()], [rule], states, now, render_template=render)["tablets"]["alerts"][0]
+    assert slide["icon"] == "mdi:door-open"
+    assert slide["background"] == "#c62828"
+    assert slide["color"] == "#ffffff"
+
+    def invalid(template, variables):
+        return "nope"
+
+    dropped = evaluate([_channel()], [rule], states, now, render_template=invalid)["tablets"]["alerts"][0]
+    assert dropped["icon"] == ""
+    assert "background" not in dropped
+    assert "color" not in dropped
+
+    def boom(template, variables):
+        raise ValueError("bad template")
+
+    failed = evaluate([_channel()], [rule], states, now, render_template=boom)["tablets"]["alerts"][0]
+    assert failed["icon"] == ""
+    assert "background" not in failed
+    assert "color" not in failed
 
 
 def test_filter_orders_by_name_and_skips_excludes():
@@ -381,6 +552,7 @@ def test_signature_changes_for_each_signed_field():
     assert changed_alert("secondary", "Closed") != original
     assert changed_alert("background", "#000000") != original
     assert changed_alert("color", "#000000") != original
+    assert changed_alert("severity", "warning") != original
     assert changed_alert("tap_action", {"action": "navigate", "navigation_path": "/lovelace"}) != original
     assert changed_alert("hold_action", {"action": "toggle", "entity": "light.hall"}) != original
 

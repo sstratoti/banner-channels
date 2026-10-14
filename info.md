@@ -8,10 +8,10 @@ HACS custom repository: `https://github.com/sstratoti/banner-channels`, category
 
 Manual install: copy `custom_components/banner_channels` into the configuration `custom_components` directory and restart Home Assistant.
 
-Card module: `/banner_channels/banner-channel-card.js?v=0.1.0`. YAML-mode Lovelace adds that URL as a module resource. Storage mode gets it from the integration.
+Card module: `/banner_channels/banner-channel-card.js?v=0.2.0`. YAML-mode Lovelace adds that URL as a module resource. Storage mode gets it from the integration.
 
 ```yaml
-url: /banner_channels/banner-channel-card.js?v=0.1.0
+url: /banner_channels/banner-channel-card.js?v=0.2.0
 type: module
 ```
 
@@ -34,7 +34,7 @@ Create a channel (name, rotate interval, badge, empty behavior). Saving it creat
 }
 ```
 
-Create a rule tagged with one or more channels: headline, subtext, icon, background and text colors, match, optional time window, optional second condition, tap and hold. In the headline or the subtext, `{name}` and `{state}` are replaced for each match. Text that contains `{{` or `{%` is a Jinja template, with variables `state`, `entity_id`, `name`, and `rule_id`.
+Create a rule tagged with one or more channels: headline, subtext, icon, background and text colors, match, optional time window, optional second condition, tap and hold. In the headline or the subtext, `{name}` and `{state}` are replaced for each match. Text that contains `{{` or `{%` is a Jinja template, with variables `state`, `entity_id`, `name`, and `rule_id`. The icon, background, and text color accept the same templates. A rendered icon must be an `mdi:` name. A rendered color must look like `#c62828`.
 
 ```json
 {
@@ -63,7 +63,7 @@ Create a rule tagged with one or more channels: headline, subtext, icon, backgro
 }
 ```
 
-Add a dashboard card of type `custom:banner-channel`. Its only field is `entity`:
+On a dashboard, choose Add card and pick Banner Channel. The editor asks for the channel sensor. The same card in YAML is:
 
 ```yaml
 type: custom:banner-channel

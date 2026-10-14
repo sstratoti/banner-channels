@@ -1,5 +1,5 @@
 import {
-  validateConfig, feedSignature, nextIndex, viewMode, showBadge, describeAction,
+  validateConfig, stubEntity, CARD_EDITOR_SCHEMA, feedSignature, nextIndex, viewMode, slideCounter, describeAction, resolveIcon, severityLook,
 } from "./banner-core.js";
 
 const Panel = customElements.get("ha-panel-lovelace") || customElements.get("hui-view");
@@ -20,8 +20,12 @@ class BannerChannelCard extends LitElement {
     this._rev = 0;
   }
 
-  static getStubConfig() {
-    return { entity: "sensor.banner_tablets" };
+  static getConfigElement() {
+    return document.createElement("banner-channel-card-editor");
+  }
+
+  static getStubConfig(hass) {
+    return { entity: stubEntity(hass) };
   }
 
   set hass(hass) {
@@ -151,22 +155,30 @@ class BannerChannelCard extends LitElement {
         <div class="text"><div class="primary">${clear.text || "All clear"}</div></div>
       </div></ha-card>`;
     }
-    const alert = (this._attrs.alerts || [])[this._index] || {};
-    const rowStyle = alert.background ? `background:${alert.background}` : "";
+    const alerts = this._attrs.alerts || [];
+    const alert = alerts[this._index] || {};
+    const styles = this._attrs.severity_styles || {};
+    const look = severityLook(alert, styles);
+    const icon = resolveIcon(alert, styles);
+    const accent = look && look.accent ? `border-left-color:${look.accent}` : "";
+    const rowStyle = alert.background ? `background:${alert.background}` : accent;
     const textStyle = alert.color ? `color:${alert.color}` : "";
+    const iconStyle = textStyle || (look && look.iconColor ? `color:${look.iconColor}` : "");
+    const counter = this._attrs.show_badge === false ? "" : slideCounter(this._index, alerts.length);
     return html`<ha-card
       @pointerdown=${(event) => this._onPointerDown(event)}
       @pointermove=${(event) => this._onPointerMove(event)}
       @pointerup=${() => this._onPointerUp()}
       @pointercancel=${() => this._clearPointer()}
       style="cursor:pointer">
-      <div class="row ${this._fading ? "fade-out" : ""}" style=${rowStyle}>
-        ${showBadge(this._state, this._attrs) ? html`<div class="badge">${Number(this._state)}</div>` : ""}
-        <ha-icon icon="${alert.icon || ""}" style=${textStyle}></ha-icon>
+      <div class="row ${look && look.accent ? "accent" : ""} ${counter ? "has-counter" : ""} ${this._fading ? "fade-out" : ""}" style=${rowStyle}>
+        <ha-icon icon="${icon}" style=${iconStyle}></ha-icon>
         <div class="text" style=${textStyle}>
+          ${look ? html`<div class="severity" style="color:${look.color}">${look.label}</div>` : ""}
           <div class="primary">${alert.primary || ""}</div>
           ${alert.secondary ? html`<div class="secondary">${alert.secondary}</div>` : ""}
         </div>
+        ${counter ? html`<div class="counter" style=${textStyle}>${counter}</div>` : ""}
       </div>
     </ha-card>`;
   }
@@ -175,22 +187,30 @@ class BannerChannelCard extends LitElement {
 
   static get styles() {
     return css`
+      ha-card { overflow: hidden; }
       .row {
-        display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+        position: relative;
+        display: flex; align-items: center; gap: 12px; padding: 10px 14px;
         opacity: 1; transition: opacity 0.18s ease;
       }
+      .row.accent { border-left: 3px solid transparent; padding-left: 11px; }
+      .row.has-counter { padding-right: 46px; }
       .fade-out { opacity: 0; }
-      .badge {
-        min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 13px; font-weight: 600;
-        background: var(--primary-color); color: var(--text-primary-color, #fff);
+      .counter {
+        position: absolute; top: 6px; right: 10px;
+        font-size: 11px; font-weight: 700; letter-spacing: 0.04em; line-height: 1;
+        color: var(--secondary-text-color, #727272);
+        pointer-events: none; white-space: nowrap;
       }
-      ha-icon { --mdc-icon-size: 26px; flex: 0 0 auto; }
-      .text { display: flex; flex-direction: column; min-width: 0; }
-      .primary, .secondary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .primary { font-size: 15px; font-weight: 600; }
-      .secondary { font-size: 12.5px; opacity: 0.85; }
+      ha-icon { --mdc-icon-size: 28px; flex: 0 0 auto; display: flex; }
+      .text { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+      .severity, .primary, .secondary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .severity {
+        font-size: 10px; font-weight: 700; line-height: 1.3;
+        letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 1px;
+      }
+      .primary { font-size: 16px; font-weight: 600; line-height: 1.3; }
+      .secondary { font-size: 13px; line-height: 1.35; opacity: 0.75; }
       .muted { color: var(--secondary-text-color); }
     `;
   }
@@ -226,10 +246,47 @@ function catchCall(result) {
   }
 }
 
-customElements.define("banner-channel-card", BannerChannelCard);
+class BannerChannelCardEditor extends LitElement {
+  static get properties() {
+    return { hass: {}, _config: { state: true } };
+  }
+
+  setConfig(config) {
+    this._config = { entity: (config && config.entity) || "" };
+  }
+
+  render() {
+    if (!this._config) return html``;
+    return html`
+      <ha-form
+        .hass=${this.hass}
+        .data=${this._config}
+        .schema=${CARD_EDITOR_SCHEMA}
+        .computeLabel=${() => "Channel"}
+        .computeHelper=${() => "Pick the sensor for this channel."}
+        @value-changed=${(event) => {
+          fireEvent(this, "config-changed", { config: event.detail.value });
+        }}
+      ></ha-form>
+    `;
+  }
+}
+
+if (!customElements.get("banner-channel-card-editor")) {
+  customElements.define("banner-channel-card-editor", BannerChannelCardEditor);
+}
+if (!customElements.get("banner-channel")) {
+  customElements.define("banner-channel", BannerChannelCard);
+}
+if (!customElements.get("banner-channel-card")) {
+  customElements.define("banner-channel-card", class extends BannerChannelCard {});
+}
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "banner-channel",
-  name: "Banner Channel",
-  description: "One channel of the Banner Channels feed.",
-});
+if (!window.customCards.some((card) => card.type === "banner-channel")) {
+  window.customCards.push({
+    type: "banner-channel",
+    name: "Banner Channel",
+    preview: true,
+    description: "One channel of the Banner Channels feed.",
+  });
+}

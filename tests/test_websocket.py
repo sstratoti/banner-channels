@@ -12,7 +12,7 @@ from custom_components.banner_channels import async_register_card_resource
 from custom_components.banner_channels.const import DOMAIN
 
 CARD_PATH = "/banner_channels/banner-channel-card.js"
-CARD_URL = "/banner_channels/banner-channel-card.js?v=0.1.0"
+CARD_URL = "/banner_channels/banner-channel-card.js?v=0.2.0"
 
 
 async def _frontend_ready(hass, config):
@@ -214,19 +214,63 @@ async def test_invalid_template_does_not_save_a_rule(
     )
     assert "subtext" in invalid_subtext["result"]["errors"]
 
+    invalid_icon = await _send(
+        client,
+        {
+            "type": "banner_channels/save",
+            "kind": "rule",
+            "record": _door_rule(icon="{{"),
+        },
+    )
+    assert "icon" in invalid_icon["result"]["errors"]
+
     saved = await _send(
         client,
         {
             "type": "banner_channels/save",
             "kind": "rule",
-            "record": _door_rule(headline="{{ name }}", subtext="{state}"),
+            "record": _door_rule(
+                headline="{{ name }}",
+                subtext="{state}",
+                icon="{{ 'mdi:door-open' if state == 'on' else 'mdi:door-closed' }}",
+                background="{{ '#c62828' }}",
+                color="{{ '#ffffff' }}",
+            ),
         },
     )
     assert saved["success"] is True
     assert saved["result"]["record"]["headline"] == "{{ name }}"
     assert saved["result"]["record"]["subtext"] == "{state}"
+    assert saved["result"]["record"]["icon"].startswith("{{ 'mdi:door-open'")
+    assert saved["result"]["record"]["background"] == "{{ '#c62828' }}"
+    assert saved["result"]["record"]["color"] == "{{ '#ffffff' }}"
     assert "subtext_template" not in saved["result"]["record"]
     assert saved["result"]["record"]["position"] == 0
+
+
+@pytest.mark.asyncio
+async def test_rule_save_keeps_severity_and_rejects_unknown_levels(
+    hass, hass_ws_client, enable_custom_integrations
+):
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    bad = await _send(
+        client,
+        {"type": "banner_channels/save", "kind": "rule", "record": _door_rule(severity="critical")},
+    )
+    assert "severity" in bad["result"]["errors"]
+
+    saved = await _send(
+        client,
+        {"type": "banner_channels/save", "kind": "rule", "record": _door_rule(severity="warning")},
+    )
+    assert saved["result"]["record"]["severity"] == "warning"
+
+    blank = await _send(
+        client,
+        {"type": "banner_channels/save", "kind": "rule", "record": _door_rule()},
+    )
+    assert blank["result"]["record"]["severity"] == ""
 
 
 @pytest.mark.asyncio

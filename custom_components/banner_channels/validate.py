@@ -11,6 +11,7 @@ _TIME = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 _OPERATORS = {"is", "is_not", "above", "at_or_above", "below", "at_or_below"}
 _NUMERIC = {"above", "at_or_above", "below", "at_or_below"}
 _ACTIONS = {"more-info", "navigate", "url", "toggle", "call-service", "none"}
+_SEVERITIES = ("", "info", "warning", "problem")
 
 
 def slugify(name: str) -> str:
@@ -40,7 +41,38 @@ def validate_channel(data: dict, taken_entity_ids: set[str]) -> dict[str, str]:
         icon = (data.get("all_clear") or {}).get("icon") or ""
         if icon and not _ICON.match(icon):
             errors["all_clear_icon"] = "Use an mdi icon."
+    _styles, style_errors = severity_styles(data.get("severity_styles"))
+    errors.update(style_errors)
     return errors
+
+
+def severity_styles(raw) -> tuple[dict, dict[str, str]]:
+    """Return cleaned per-level icon and color, plus any field errors."""
+    errors: dict[str, str] = {}
+    styles = {level: {"icon": "", "color": ""} for level in ("info", "warning", "problem")}
+    if raw in (None, ""):
+        return styles, errors
+    if not isinstance(raw, dict):
+        return styles, {"severity_styles": "Severity defaults are invalid."}
+    for level in styles:
+        item = raw.get(level)
+        if item in (None, ""):
+            item = {}
+        if not isinstance(item, dict):
+            errors[f"severity_{level}"] = "Use an icon and a color."
+            continue
+        icon = str(item.get("icon") or "").strip()
+        color = str(item.get("color") or "").strip()
+        if icon and not _ICON.match(icon):
+            errors[f"severity_{level}_icon"] = "Use an mdi icon."
+        if color and not _HEX.match(color):
+            errors[f"severity_{level}_color"] = "Use a color like #c62828."
+        styles[level] = {"icon": icon, "color": color}
+    return styles, errors
+
+
+def _is_template(value: str) -> bool:
+    return "{{" in value or "{%" in value
 
 
 def _action_error(action: dict | None) -> str | None:
@@ -74,12 +106,24 @@ def validate_rule(data: dict) -> dict[str, str]:
     subtext = data.get("subtext") or ""
     if len(subtext) > 1000:
         errors["subtext"] = "Subtext can be at most 1000 characters."
-    if not _ICON.match(data.get("icon") or ""):
+    icon = (data.get("icon") or "").strip()
+    severity = data.get("severity") or ""
+    if _is_template(icon):
+        if len(icon) > 1000:
+            errors["icon"] = "Icon can be at most 1000 characters."
+    elif icon and not _ICON.match(icon):
+        errors["icon"] = "Use an mdi icon."
+    elif not icon and severity not in ("info", "warning", "problem"):
         errors["icon"] = "Use an mdi icon."
     for key in ("background", "color"):
         value = data.get(key) or ""
-        if value and not _HEX.match(value):
+        if _is_template(value):
+            if len(value) > 1000:
+                errors[key] = "Use a color like #c62828, or a template up to 1000 characters."
+        elif value and not _HEX.match(value):
             errors[key] = "Use a color like #c62828."
+    if (data.get("severity") or "") not in _SEVERITIES:
+        errors["severity"] = "Choose Information, Warning, Problem, or none."
     match = data.get("match") or {}
     kind = match.get("kind")
     if match.get("operator") not in _OPERATORS:

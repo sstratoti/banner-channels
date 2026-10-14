@@ -433,21 +433,21 @@ git commit -m "feat: publish one sensor per banner channel"
 - Consumes: the config entry, `BannerRuntime`, and `BannerChannelSensor` from Task 2
 - Produces: proof that a watched state writes the sensor, an unrelated state does not, an unchanged feed does not write again, a late-added sensor still receives its feed, and delete removes the registry entry
 
-- [ ] **Step 1: Add the Home Assistant test dependency**
+- [x] **Step 1: Add the Home Assistant test dependency** `b1ce876`
 
 Add `pytest-homeassistant-custom-component` to a `requirements-test.txt`. The test module uses the `hass` fixture from that package.
 
-- [ ] **Step 2: Write the test**
+- [x] **Step 2: Write the test** `b1ce876`
 
 Create `tests/test_runtime.py`. Set up a `MockConfigEntry` for `banner_channels`, call `hass.config_entries.async_setup`, then `await hass.async_block_till_done()`. Save a Tablets channel and a Front Door rule through the runtime. Set `binary_sensor.front_door` to `on` with friendly name `Front Door` and block till done. Assert `sensor.banner_tablets` state is `"1"` and `alerts[0].primary` is `Front Door`. Record `last_updated`. Set `sensor.unrelated` to `"1"` and assert `last_updated` is unchanged. Set the door to `on` again with the same attributes and assert `last_updated` is unchanged. Delete the channel and assert `entity_registry.async_get(hass).async_get("sensor.banner_tablets")` is `None`.
 
-- [ ] **Step 3: Run it**
+- [x] **Step 3: Run it** `b1ce876`
 
 Run: `python -m pytest tests/test_runtime.py -q`
 
 Expected: `1 passed`
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit** `b1ce876`
 
 ```bash
 git add tests/test_runtime.py requirements-test.txt

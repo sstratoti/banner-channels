@@ -32,3 +32,245 @@ def test_window_includes_start_excludes_end_and_wraps():
     assert in_window(datetime(2026, 10, 13, 12, 0, tzinfo=TZ), "20:00", "04:00") is False
     assert in_window(datetime(2026, 10, 13, 4, 0, tzinfo=TZ), "20:00", "04:00") is False
     assert in_window(datetime(2026, 10, 13, 15, 0, tzinfo=TZ), "08:00", "08:00") is True
+
+
+from evaluate import Snap, evaluate, feed_signature, watched_entity_ids
+
+
+def _door_rule(**overrides):
+    rule = {
+        "id": "door",
+        "position": 0,
+        "channels": ["tablets"],
+        "headline": "Front Door",
+        "subtext": "Open",
+        "subtext_template": "",
+        "icon": "mdi:door-open",
+        "background": "#c62828",
+        "color": "#ffffff",
+        "match": {
+            "kind": "entity",
+            "entity_id": "binary_sensor.front_door",
+            "operator": "is",
+            "value": "on",
+        },
+        "tap_action": {"action": "more-info"},
+        "hold_action": {"action": "none"},
+    }
+    rule.update(overrides)
+    return rule
+
+
+def _channel():
+    return {
+        "id": "tablets",
+        "name": "Tablets",
+        "entity_id": "sensor.banner_tablets",
+        "position": 0,
+        "rotate_interval": 10,
+        "show_badge": True,
+        "empty": "hide",
+        "all_clear": {"icon": "mdi:check", "text": "All clear"},
+    }
+
+
+def test_entity_match_builds_one_slide_and_defaults_tap():
+    now = datetime(2026, 10, 13, 12, 0, tzinfo=TZ)
+    states = {"binary_sensor.front_door": Snap("on", "Front Door")}
+    feeds = evaluate([_channel()], [_door_rule()], states, now)
+    alerts = feeds["tablets"]["alerts"]
+    assert len(alerts) == 1
+    assert alerts[0]["id"] == "door:binary_sensor.front_door"
+    assert alerts[0]["primary"] == "Front Door"
+    assert alerts[0]["secondary"] == "Open"
+    assert alerts[0]["background"] == "#c62828"
+    assert alerts[0]["tap_action"] == {
+        "action": "more-info",
+        "entity": "binary_sensor.front_door",
+    }
+    assert alerts[0]["hold_action"] == {"action": "none"}
+    assert feeds["tablets"]["all_clear"] is None
+
+
+def test_blank_tap_becomes_more_info_and_hold_blank_is_none():
+    now = datetime(2026, 10, 13, 12, 0, tzinfo=TZ)
+    states = {"binary_sensor.front_door": Snap("on", "Front Door")}
+    rule = _door_rule(tap_action={}, hold_action={})
+    slide = evaluate([_channel()], [rule], states, now)["tablets"]["alerts"][0]
+    assert slide["tap_action"]["action"] == "more-info"
+    assert slide["tap_action"]["entity"] == "binary_sensor.front_door"
+    assert slide["hold_action"] == {"action": "none"}
+
+
+def test_unavailable_and_failed_also_suppress_the_slide():
+    now = datetime(2026, 10, 13, 12, 0, tzinfo=TZ)
+    rule = _door_rule(also={"entity_id": "sensor.status", "operator": "is_not", "value": "ccp"})
+    hidden = evaluate(
+        [_channel()],
+        [rule],
+        {
+            "binary_sensor.front_door": Snap("on", "Front Door"),
+            "sensor.status": Snap("ccp", "Status"),
+        },
+        now,
+    )
+    assert hidden["tablets"]["alerts"] == []
+    missing = evaluate(
+        [_channel()],
+        [_door_rule()],
+        {"binary_sensor.front_door": Snap("unavailable", "Front Door")},
+        now,
+    )
+    assert missing["tablets"]["alerts"] == []
+
+
+def test_time_window_and_placeholders():
+    rule = _door_rule(
+        headline="{name}",
+        subtext="{state}",
+        when={"from": "20:00", "to": "04:00"},
+    )
+    states = {"binary_sensor.front_door": Snap("on", "Front Door")}
+    day = evaluate([_channel()], [rule], states, datetime(2026, 10, 13, 12, 0, tzinfo=TZ))
+    night = evaluate([_channel()], [rule], states, datetime(2026, 10, 13, 21, 0, tzinfo=TZ))
+    assert day["tablets"]["alerts"] == []
+    slide = night["tablets"]["alerts"][0]
+    assert slide["primary"] == "Front Door"
+    assert slide["secondary"] == "on"
+
+
+def test_template_overrides_subtext_and_errors_fall_back():
+    rule = _door_rule(subtext="plain", subtext_template="{{ name }}")
+    states = {"binary_sensor.front_door": Snap("on", "Front Door")}
+    now = datetime(2026, 10, 13, 12, 0, tzinfo=TZ)
+
+    def render(template, variables):
+        assert template == "{{ name }}"
+        assert variables["entity_id"] == "binary_sensor.front_door"
+        return variables["name"]
+
+    ok = evaluate([_channel()], [rule], states, now, render_template=render)
+    assert ok["tablets"]["alerts"][0]["secondary"] == "Front Door"
+
+    def boom(template, variables):
+        raise ValueError("bad template")
+
+    bad = evaluate([_channel()], [rule], states, now, render_template=boom)
+    assert bad["tablets"]["alerts"][0]["secondary"] == "plain"
+
+
+def test_filter_orders_by_name_and_skips_excludes():
+    rule = {
+        "id": "bat",
+        "position": 1,
+        "channels": ["tablets"],
+        "headline": "Low battery {state}",
+        "subtext": "{name}",
+        "subtext_template": "",
+        "icon": "mdi:battery-alert",
+        "match": {
+            "kind": "filter",
+            "pattern": "sensor.*battery*",
+            "operator": "at_or_below",
+            "value": "20",
+            "exclude": ["sensor.phone_battery"],
+        },
+        "tap_action": {"action": "none"},
+        "hold_action": {"action": "none"},
+    }
+    states = {
+        "sensor.phone_battery": Snap("5", "Phone"),
+        "sensor.lock_battery": Snap("12", "Lock"),
+        "sensor.remote_battery_level": Snap("40", "Remote"),
+        "sensor.sensor_battery": Snap("20", "Zoo Sensor"),
+        "binary_sensor.front_door": Snap("on", "Front Door"),
+    }
+    now = datetime(2026, 10, 13, 12, 0, tzinfo=TZ)
+    alerts = evaluate([_channel()], [_door_rule(), rule], states, now)["tablets"]["alerts"]
+    assert [a["id"] for a in alerts] == [
+        "door:binary_sensor.front_door",
+        "bat:sensor.lock_battery",
+        "bat:sensor.sensor_battery",
+    ]
+    assert alerts[1]["primary"] == "Low battery 12"
+    assert alerts[1]["secondary"] == "Lock"
+
+
+def test_signature_changes_when_visible_content_changes():
+    now = datetime(2026, 10, 13, 12, 0, tzinfo=TZ)
+    on = evaluate(
+        [_channel()],
+        [_door_rule()],
+        {"binary_sensor.front_door": Snap("on", "Front Door")},
+        now,
+    )["tablets"]
+    off = evaluate(
+        [_channel()],
+        [_door_rule()],
+        {"binary_sensor.front_door": Snap("off", "Front Door")},
+        now,
+    )["tablets"]
+    assert feed_signature(on) != feed_signature(off)
+    assert feed_signature(on) == feed_signature(dict(on))
+
+
+def test_watched_ids_include_matches_and_also():
+    rule = _door_rule(also={"entity_id": "sensor.status", "operator": "is", "value": "ok"})
+    states = {
+        "binary_sensor.front_door": Snap("on", "Front Door"),
+        "sensor.lock_battery": Snap("10", "Lock"),
+        "sensor.unrelated": Snap("1", "Nope"),
+    }
+    filt = {
+        "id": "bat",
+        "position": 1,
+        "channels": ["tablets"],
+        "headline": "Low",
+        "subtext": "",
+        "subtext_template": "",
+        "icon": "mdi:battery-alert",
+        "match": {
+            "kind": "filter",
+            "pattern": "sensor.*battery*",
+            "operator": "below",
+            "value": "20",
+            "exclude": [],
+        },
+    }
+    watched = watched_entity_ids([rule, filt], states)
+    assert watched == {
+        "binary_sensor.front_door",
+        "sensor.status",
+        "sensor.lock_battery",
+    }
+
+
+def test_filter_skips_the_channels_own_sensors():
+    rule = {
+        "id": "bat",
+        "position": 0,
+        "channels": ["tablets"],
+        "headline": "{name}",
+        "subtext": "",
+        "subtext_template": "",
+        "icon": "mdi:battery-alert",
+        "match": {
+            "kind": "filter",
+            "pattern": "sensor.*",
+            "operator": "below",
+            "value": "50",
+            "exclude": [],
+        },
+    }
+    states = {
+        "sensor.lock_battery": Snap("10", "Lock"),
+        "sensor.banner_tablets": Snap("1", "Tablets"),
+    }
+    now = datetime(2026, 10, 13, 12, 0, tzinfo=TZ)
+    alerts = evaluate(
+        [_channel()], [rule], states, now, skip_entity_ids={"sensor.banner_tablets"}
+    )["tablets"]["alerts"]
+    assert [alert["id"] for alert in alerts] == ["bat:sensor.lock_battery"]
+    watched = watched_entity_ids([rule], states, {"sensor.banner_tablets"})
+    assert "sensor.banner_tablets" not in watched
+    assert "sensor.lock_battery" in watched

@@ -40,7 +40,7 @@
   - `viewMode(state, attributes) -> "unavailable" | "hide" | "all_clear" | "alerts"`
   - `showBadge(state, attributes) -> boolean`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test** `ff0b894`
 
 Create `test/banner-core.test.mjs`:
 
@@ -92,13 +92,13 @@ test("describeAction chooses the side effect and ignores none", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails** `ff0b894`
 
 Run: `node --test test/banner-core.test.mjs`
 
 Expected: FAIL with `ERR_MODULE_NOT_FOUND`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation** `83a13d8`
 
 Create `custom_components/banner_channels/frontend/banner-core.js`:
 
@@ -157,18 +157,20 @@ export function describeAction(action) {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes** `8309f48`
 
 Run: `node --test test/banner-core.test.mjs`
 
-Expected: `# fail 0` and five passing tests
+Expected: `# fail 0` and five passing tests. Follow-up `8309f48` adds the regression assertions inside those five tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit** `83a13d8`
 
 ```bash
 git add custom_components/banner_channels/frontend/banner-core.js test/banner-core.test.mjs
 git commit -m "feat: decide what a banner channel card should show"
 ```
+
+Follow-up test commit: `8309f48`.
 
 ---
 

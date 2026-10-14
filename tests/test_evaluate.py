@@ -458,3 +458,15 @@ def test_explicit_entity_match_keeps_skipped_channel_sensor():
     assert [alert["id"] for alert in alerts] == ["door:sensor.banner_tablets"]
     watched = watched_entity_ids([rule], states, {"sensor.banner_tablets"})
     assert "sensor.banner_tablets" in watched
+
+
+def test_changed_feeds_skips_an_unchanged_channel():
+    from evaluate import changed_feeds
+
+    first = {"tablets": {"rotate_interval": 10, "show_badge": True, "empty": "hide", "all_clear": None, "alerts": []}}
+    second = dict(first)
+    second["phone"] = {"rotate_interval": 5, "show_badge": False, "empty": "hide", "all_clear": None, "alerts": []}
+    _, sigs = changed_feeds({}, first)
+    changed, sigs = changed_feeds(sigs, second)
+    assert list(changed) == ["phone"]
+    assert set(sigs) == {"tablets", "phone"}

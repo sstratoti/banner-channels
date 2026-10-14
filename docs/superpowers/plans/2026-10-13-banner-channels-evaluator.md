@@ -35,7 +35,7 @@
 - Consumes: nothing
 - Produces: `compare(state: str, operator: str, value: str) -> bool`, `in_window(now: datetime, start: str, end: str) -> bool`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test** `d82547f`
 
 Create `tests/test_evaluate.py`:
 
@@ -83,13 +83,13 @@ Create `pytest.ini`:
 pythonpath = custom_components/banner_channels
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails** `d82547f`
 
 Run: `python -m pytest tests/test_evaluate.py -q`
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'evaluate'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation** `9e7d39d`
 
 Create `custom_components/banner_channels/evaluate.py`:
 
@@ -140,13 +140,13 @@ def in_window(now: datetime, start: str, end: str) -> bool:
     return current >= start_m or current < end_m
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes** `9e7d39d`
 
 Run: `python -m pytest tests/test_evaluate.py -q`
 
 Expected: `3 passed`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit** `9e7d39d`
 
 ```bash
 git add pytest.ini custom_components/banner_channels/evaluate.py tests/test_evaluate.py

@@ -1,3 +1,4 @@
+import copy
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -274,3 +275,184 @@ def test_filter_skips_the_channels_own_sensors():
     watched = watched_entity_ids([rule], states, {"sensor.banner_tablets"})
     assert "sensor.banner_tablets" not in watched
     assert "sensor.lock_battery" in watched
+
+
+def test_feed_orders_rules_by_position_then_name_then_entity_id():
+    early = {
+        "id": "cells",
+        "position": 0,
+        "channels": ["tablets"],
+        "headline": "{name}",
+        "subtext": "",
+        "subtext_template": "",
+        "icon": "mdi:battery-alert",
+        "match": {
+            "kind": "filter",
+            "pattern": "sensor.*battery*",
+            "operator": "at_or_below",
+            "value": "20",
+            "exclude": [],
+        },
+        "tap_action": {"action": "none"},
+        "hold_action": {"action": "none"},
+    }
+    late = _door_rule(
+        id="late",
+        position=1,
+        headline="Aaron",
+        match={
+            "kind": "entity",
+            "entity_id": "binary_sensor.aaa_alert",
+            "operator": "is",
+            "value": "on",
+        },
+    )
+    states = {
+        "sensor.zulu_unit_battery": Snap("10", "Alpha"),
+        "sensor.alpha_unit_battery": Snap("10", "Zulu"),
+        "sensor.alpha_other_battery": Snap("10", "Alpha"),
+        "binary_sensor.aaa_alert": Snap("on", "Aaron"),
+    }
+    now = datetime(2026, 10, 13, 12, 0, tzinfo=TZ)
+    alerts = evaluate([_channel()], [late, early], states, now)["tablets"]["alerts"]
+    assert [alert["id"] for alert in alerts] == [
+        "cells:sensor.alpha_other_battery",
+        "cells:sensor.zulu_unit_battery",
+        "cells:sensor.alpha_unit_battery",
+        "late:binary_sensor.aaa_alert",
+    ]
+
+
+def test_signature_changes_for_each_signed_field():
+    now = datetime(2026, 10, 13, 12, 0, tzinfo=TZ)
+    channel = _channel()
+    channel["empty"] = "all_clear"
+    feed = evaluate(
+        [channel],
+        [_door_rule()],
+        {"binary_sensor.front_door": Snap("on", "Front Door")},
+        now,
+    )["tablets"]
+    alert = feed["alerts"][0]
+    assert feed["rotate_interval"] == 10
+    assert feed["show_badge"] is True
+    assert feed["empty"] == "all_clear"
+    assert feed["all_clear"] == {"icon": "mdi:check", "text": "All clear"}
+    assert alert["icon"] == "mdi:door-open"
+    assert alert["primary"] == "Front Door"
+    assert alert["secondary"] == "Open"
+    assert alert["background"] == "#c62828"
+    assert alert["color"] == "#ffffff"
+    assert alert["tap_action"] == {
+        "action": "more-info",
+        "entity": "binary_sensor.front_door",
+    }
+    assert alert["hold_action"] == {"action": "none"}
+
+    original = feed_signature(feed)
+    assert feed_signature(copy.deepcopy(feed)) == original
+
+    def changed_feed(**updates):
+        clone = copy.deepcopy(feed)
+        clone.update(updates)
+        return feed_signature(clone)
+
+    def changed_alert(field, value):
+        clone = copy.deepcopy(feed)
+        clone["alerts"][0][field] = value
+        return feed_signature(clone)
+
+    assert changed_feed(rotate_interval=15) != original
+    assert changed_feed(show_badge=False) != original
+    assert changed_feed(empty="hide") != original
+    assert changed_feed(all_clear={"icon": "mdi:check-all", "text": "All clear"}) != original
+    assert changed_alert("icon", "mdi:door") != original
+    assert changed_alert("primary", "Side Door") != original
+    assert changed_alert("secondary", "Closed") != original
+    assert changed_alert("background", "#000000") != original
+    assert changed_alert("color", "#000000") != original
+    assert changed_alert("tap_action", {"action": "navigate", "navigation_path": "/lovelace"}) != original
+    assert changed_alert("hold_action", {"action": "toggle", "entity": "light.hall"}) != original
+
+
+def test_unusable_also_and_unknown_primary_suppress_the_slide():
+    now = datetime(2026, 10, 13, 12, 0, tzinfo=TZ)
+    rule = _door_rule(also={"entity_id": "sensor.status", "operator": "is_not", "value": "ccp"})
+    door = {"binary_sensor.front_door": Snap("on", "Front Door")}
+
+    def alerts_for(states):
+        return evaluate([_channel()], [rule], states, now)["tablets"]["alerts"]
+
+    assert alerts_for(dict(door)) == []
+    assert alerts_for({**door, "sensor.status": Snap("unavailable", "Status")}) == []
+    assert alerts_for({**door, "sensor.status": Snap("unknown", "Status")}) == []
+    shown = alerts_for({**door, "sensor.status": Snap("ok", "Status")})
+    assert [alert["id"] for alert in shown] == ["door:binary_sensor.front_door"]
+
+    primary = _door_rule(
+        match={
+            "kind": "entity",
+            "entity_id": "binary_sensor.front_door",
+            "operator": "is_not",
+            "value": "ccp",
+        }
+    )
+    hidden = evaluate(
+        [_channel()],
+        [primary],
+        {"binary_sensor.front_door": Snap("unknown", "Front Door")},
+        now,
+    )
+    assert hidden["tablets"]["alerts"] == []
+
+
+def test_watched_ids_include_filter_matches_that_fail_the_operator():
+    rule = {
+        "id": "bat",
+        "position": 0,
+        "channels": ["tablets"],
+        "headline": "Low",
+        "subtext": "",
+        "subtext_template": "",
+        "icon": "mdi:battery-alert",
+        "match": {
+            "kind": "filter",
+            "pattern": "sensor.*battery*",
+            "operator": "below",
+            "value": "20",
+            "exclude": [],
+        },
+    }
+    states = {
+        "sensor.lock_battery": Snap("80", "Lock"),
+        "sensor.unrelated": Snap("5", "Nope"),
+    }
+    now = datetime(2026, 10, 13, 12, 0, tzinfo=TZ)
+    alerts = evaluate([_channel()], [rule], states, now)["tablets"]["alerts"]
+    assert alerts == []
+    watched = watched_entity_ids([rule], states)
+    assert "sensor.lock_battery" in watched
+    assert "sensor.unrelated" not in watched
+
+
+def test_explicit_entity_match_keeps_skipped_channel_sensor():
+    rule = _door_rule(
+        match={
+            "kind": "entity",
+            "entity_id": "sensor.banner_tablets",
+            "operator": "is",
+            "value": "1",
+        }
+    )
+    states = {"sensor.banner_tablets": Snap("1", "Tablets")}
+    now = datetime(2026, 10, 13, 12, 0, tzinfo=TZ)
+    alerts = evaluate(
+        [_channel()],
+        [rule],
+        states,
+        now,
+        skip_entity_ids={"sensor.banner_tablets"},
+    )["tablets"]["alerts"]
+    assert [alert["id"] for alert in alerts] == ["door:sensor.banner_tablets"]
+    watched = watched_entity_ids([rule], states, {"sensor.banner_tablets"})
+    assert "sensor.banner_tablets" in watched

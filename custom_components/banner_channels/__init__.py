@@ -118,8 +118,7 @@ def _prepare_rule(hass, runtime, record):
         "position": position,
         "channels": [str(item) for item in (record.get("channels") or []) if str(item).strip()],
         "headline": (record.get("headline") or "").strip(),
-        "subtext": record.get("subtext") or "",
-        "subtext_template": (record.get("subtext_template") or "").strip(),
+        "subtext": (record.get("subtext") or "").strip(),
         "icon": (record.get("icon") or "").strip(),
         "background": (record.get("background") or "").strip(),
         "color": (record.get("color") or "").strip(),
@@ -134,12 +133,14 @@ def _prepare_rule(hass, runtime, record):
     if record.get("hold_action"):
         prepared["hold_action"] = record["hold_action"]
     errors = validate_rule(prepared)
-    template = prepared["subtext_template"]
-    if template:
+    for key in ("headline", "subtext"):
+        text = prepared[key]
+        if key in errors or ("{{" not in text and "{%" not in text):
+            continue
         try:
-            Template(template, hass).ensure_valid()
+            Template(text, hass).ensure_valid()
         except TemplateError as err:
-            errors["subtext_template"] = str(err) or "Template is invalid."
+            errors[key] = str(err) or "Template is invalid."
     return (None, errors) if errors else (prepared, {})
 
 

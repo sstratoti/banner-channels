@@ -4,7 +4,7 @@ Banner Channels is a Home Assistant integration. It decides which alerts are act
 
 ## Install
 
-HACS custom repository: `https://github.com/sstratoti/alert-ticker-lite-card`, category **Integration**. Minimum Home Assistant **2026.10.0**.
+HACS custom repository: `https://github.com/sstratoti/banner-channels`, category **Integration**. Minimum Home Assistant **2026.10.0**.
 
 Manual install: copy `custom_components/banner_channels` into the configuration `custom_components` directory and restart Home Assistant.
 
@@ -34,7 +34,7 @@ Create a channel (name, rotate interval, badge, empty behavior). Saving it creat
 }
 ```
 
-Create a rule tagged with one or more channels: headline, subtext, icon, background and text colors, match, optional time window, optional second condition, tap and hold.
+Create a rule tagged with one or more channels: headline, subtext, icon, background and text colors, match, optional time window, optional second condition, tap and hold. In the headline or the subtext, `{name}` and `{state}` are replaced for each match. Text that contains `{{` or `{%` is a Jinja template, with variables `state`, `entity_id`, `name`, and `rule_id`.
 
 ```json
 {
@@ -43,7 +43,6 @@ Create a rule tagged with one or more channels: headline, subtext, icon, backgro
   "channels": ["channel-uuid"],
   "headline": "Front Door",
   "subtext": "Open",
-  "subtext_template": "",
   "icon": "mdi:door-open",
   "background": "#c62828",
   "color": "#ffffff",

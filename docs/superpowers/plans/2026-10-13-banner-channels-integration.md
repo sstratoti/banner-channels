@@ -119,7 +119,7 @@ git commit -m "feat: publish a banner feed only when it changes"
   "config_flow": true,
   "dependencies": ["http", "frontend", "lovelace", "panel_custom"],
   "single_config_entry": true,
-  "documentation": "https://github.com/sstratoti/alert-ticker-lite-card",
+  "documentation": "https://github.com/sstratoti/banner-channels",
   "integration_type": "hub",
   "iot_class": "local_push",
   "version": "0.1.0"
@@ -497,7 +497,7 @@ Register `banner_channels/list`, `banner_channels/save`, `banner_channels/delete
 
 `reorder` body is `{ "kind": "channel" | "rule", "ids": ["..."] }`. Reject the call unless `ids` is a permutation of the current ids. Then set `position` to the index and refresh.
 
-Show server errors on these fields: `name`, `entity_id` (under the channel name), `rotate_interval`, `empty`, `all_clear_text`, `all_clear_icon`, `headline`, `subtext`, `icon`, `background`, `color`, `match_operator`, `match_entity`, `match_pattern`, `match_value`, `when`, `also_entity`, `also_operator`, `also_value`, `tap_action`, `hold_action`, `subtext_template`. `subtext_template` is checked with `Template(template, hass).ensure_valid()` when the string is non-empty.
+Show server errors on these fields: `name`, `entity_id` (under the channel name), `rotate_interval`, `empty`, `all_clear_text`, `all_clear_icon`, `headline`, `subtext`, `icon`, `background`, `color`, `match_operator`, `match_entity`, `match_pattern`, `match_value`, `when`, `also_entity`, `also_operator`, `also_value`, `tap_action`, `hold_action`. Headline and subtext are checked with `Template(text, hass).ensure_valid()` when the string contains `{{` or `{%`.
 
 - [x] **Step 3: Write the panel** `ff0fd79`
 
@@ -509,7 +509,7 @@ The channel form edits name, rotation seconds, show badge, and empty mode. All-c
 
 Rows are `draggable`. On drop within the same list, call `banner_channels/reorder` with the new id order. Numeric fields are sent as numbers, not strings. Service data is parsed as JSON before send. An empty data field is omitted.
 
-The rule form shows a preview banner first: a flex row with an `<ha-icon>`, a headline, and a subtext. Empty fields display `mdi:information`, `Headline`, and `Subtext`. Background and text color update the preview as the inputs change. Use `<input type="color">` plus a hex text field. Clearing the hex field clears that color. Then the fields from the spec: headline, subtext, subtext template, icon, channel checkboxes, match kind, entity or pattern, operator, value, exclude list (one entity id per line), optional time window, optional extra condition, tap action, and hold action. Show the extra action fields named in the spec for the selected action. Service data is a textarea that must be empty or a JSON object. Save sends the record. If the response contains `errors`, show each string under its field and stay on the form.
+The rule form shows a preview banner first: a flex row with an `<ha-icon>`, a headline, and a subtext. Empty fields display `mdi:information`, `Headline`, and `Subtext`. Background and text color update the preview as the inputs change. Use `<input type="color">` plus a hex text field. Clearing the hex field clears that color. Then the fields from the spec: headline, subtext, icon, channel checkboxes, match kind, entity or pattern, operator, value, exclude list (one entity id per line), optional time window, optional extra condition, tap action, and hold action. Headline and subtext are text areas. A value containing `{{` or `{%` is Jinja; otherwise `{name}` and `{state}` are plain replacements. Show the extra action fields named in the spec for the selected action. Service data is a textarea that must be empty or a JSON object. Save sends the record. If the response contains `errors`, show each string under its field and stay on the form.
 
 - [ ] **Step 4: Verify on a dashboard**
 
@@ -555,7 +555,7 @@ Set `hacs.json` to:
 
 Rewrite `README.md` and `info.md`. Remove the Node-RED contract and the Alert Ticker Lite name. Keep the MIT credit and the note that this repository is not a fork of AlertTicker-Card. The README has these sections:
 
-**Install.** HACS custom repository `https://github.com/sstratoti/alert-ticker-lite-card`, category Integration. Minimum Home Assistant `2026.10.0`. Manual install is copying `custom_components/banner_channels` into the config `custom_components` directory and restarting. After adding the integration, the card module is `/banner_channels/banner-channel-card.js?v=0.1.0`. YAML-mode Lovelace adds that URL as a module resource. Storage mode gets it from the integration.
+**Install.** HACS custom repository `https://github.com/sstratoti/banner-channels`, category Integration. Minimum Home Assistant `2026.10.0`. Manual install is copying `custom_components/banner_channels` into the config `custom_components` directory and restarting. After adding the integration, the card module is `/banner_channels/banner-channel-card.js?v=0.1.0`. YAML-mode Lovelace adds that URL as a module resource. Storage mode gets it from the integration.
 
 **Use.** Add Banner Channels once under Settings, Devices & services. Open the Banner Channels sidebar page. Create a channel (name, rotate interval, badge, empty behavior). Create a rule: headline, subtext, icon, background and text colors, one or more channels, match, optional time window, optional second condition, tap and hold. Add a dashboard card of type `custom:banner-channel` whose only field is `entity`, set to that channel's sensor, for example `sensor.banner_tablets`. Include one channel example and one entity-match rule. State that rotation, colors, and the alert list come from the sensor. The card does not edit rules.
 

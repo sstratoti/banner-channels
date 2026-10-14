@@ -34,7 +34,6 @@ def _door_rule(channels):
         "channels": channels,
         "headline": "Front Door",
         "subtext": "Open",
-        "subtext_template": "",
         "icon": "mdi:door-open",
         "background": "#c62828",
         "color": "#ffffff",
@@ -65,7 +64,6 @@ def _battery_rule(channels):
         "channels": channels,
         "headline": "Low battery",
         "subtext": "",
-        "subtext_template": "",
         "icon": "mdi:battery-alert",
         "match": {
             "kind": "filter",

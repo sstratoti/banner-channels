@@ -48,6 +48,29 @@ def test_rule_requires_headline_icon_and_match():
     assert "match_entity" in errors
 
 
+def test_rule_accepts_a_template_longer_than_a_plain_headline():
+    headline = "{{ name }} " + ("x" * 200)
+    errors = validate_rule(
+        {
+            "headline": headline,
+            "subtext": "{% if state == 'on' %}" + ("y" * 200) + "{% endif %}",
+            "icon": "mdi:door-open",
+            "match": {"kind": "entity", "entity_id": "binary_sensor.front_door", "operator": "is", "value": "on"},
+        }
+    )
+    assert errors == {}
+    too_long = validate_rule(
+        {
+            "headline": "x" * 1001,
+            "subtext": "y" * 1001,
+            "icon": "mdi:door-open",
+            "match": {"kind": "entity", "entity_id": "binary_sensor.front_door", "operator": "is", "value": "on"},
+        }
+    )
+    assert "headline" in too_long
+    assert "subtext" in too_long
+
+
 def test_rule_accepts_a_filter_and_a_service_action():
     errors = validate_rule(
         {

@@ -61,6 +61,29 @@ def _fill(text: str, state: str, name: str) -> str:
     return (text or "").replace("{state}", state).replace("{name}", name)
 
 
+def _is_template(text: str) -> bool:
+    return "{{" in text or "{%" in text
+
+
+def _line(text, state, name, entity_id, rule_id, render_template) -> str:
+    source = text or ""
+    plain = _fill(source, state, name)
+    if not _is_template(source) or render_template is None:
+        return plain
+    try:
+        return render_template(
+            source,
+            {
+                "state": state,
+                "name": name,
+                "entity_id": entity_id,
+                "rule_id": rule_id,
+            },
+        )
+    except Exception:
+        return plain
+
+
 def _resolve_action(action: dict | None, matched: str, kind: str) -> dict:
     act = (action or {}).get("action") or ""
     if not act:
@@ -85,25 +108,6 @@ def _resolve_action(action: dict | None, matched: str, kind: str) -> dict:
             resolved["target"] = action["target"]
         return resolved
     return {"action": "none"}
-
-
-def _secondary(rule: dict, state: str, name: str, entity_id: str, render_template) -> str:
-    plain = _fill(rule.get("subtext") or "", state, name)
-    template = (rule.get("subtext_template") or "").strip()
-    if not template or render_template is None:
-        return plain
-    try:
-        return render_template(
-            template,
-            {
-                "state": state,
-                "name": name,
-                "entity_id": entity_id,
-                "rule_id": rule["id"],
-            },
-        )
-    except Exception:
-        return plain
 
 
 def _candidates(rule: dict, states: dict[str, Snap], skip: set[str]) -> list[str]:
@@ -147,8 +151,8 @@ def _slide(rule: dict, entity_id: str, states: dict[str, Snap], render_template)
     slide = {
         "id": f"{rule['id']}:{entity_id}",
         "icon": rule["icon"],
-        "primary": _fill(rule.get("headline") or "", snap.state, name),
-        "secondary": _secondary(rule, snap.state, name, entity_id, render_template),
+        "primary": _line(rule.get("headline"), snap.state, name, entity_id, rule["id"], render_template),
+        "secondary": _line(rule.get("subtext"), snap.state, name, entity_id, rule["id"], render_template),
         "tap_action": _resolve_action(rule.get("tap_action"), entity_id, "tap"),
         "hold_action": _resolve_action(rule.get("hold_action"), entity_id, "hold"),
     }

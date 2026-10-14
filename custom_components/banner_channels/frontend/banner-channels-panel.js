@@ -12,10 +12,9 @@ export const HELP = {
     all_clear_icon: "Optional icon beside the all-clear text.",
   },
   rule: {
-    headline: "Main line. {name} and {state} are replaced for each match.",
-    subtext: "Second line. {name} and {state} are replaced for each match.",
-    subtext_template:
-      "Optional Jinja. When set, its output replaces the subtext. Variables: state, entity_id, name, rule_id.",
+    headline:
+      "Main line. {name} and {state} are replaced for each match. Text with {{ or {% is a Jinja template. Variables: state, entity_id, name, rule_id.",
+    subtext: "Second line. Same replacements and templates as the headline.",
     icon: "An mdi icon, such as mdi:door-open. It uses the text color.",
     background: "Banner color. Leave blank to use the dashboard theme.",
     color: "Text and icon color. Leave blank to use the dashboard theme.",
@@ -142,7 +141,6 @@ export function ruleRecord(draft) {
   const record = {
     headline: draft.headline ?? "",
     subtext: draft.subtext ?? "",
-    subtext_template: draft.subtext_template ?? "",
     icon: draft.icon ?? "",
     background: (draft.background || "").trim(),
     color: (draft.color || "").trim(),
@@ -188,6 +186,12 @@ function field(label, control, help, messages) {
 function input(type, value) {
   const node = document.createElement("input");
   node.type = type;
+  node.value = value == null ? "" : String(value);
+  return node;
+}
+
+function textbox(value) {
+  const node = document.createElement("textarea");
   node.value = value == null ? "" : String(value);
   return node;
 }
@@ -264,7 +268,6 @@ function ruleDraft(record) {
     return {
       headline: "",
       subtext: "",
-      subtext_template: "",
       icon: "",
       background: "",
       color: "",
@@ -286,7 +289,6 @@ function ruleDraft(record) {
     id: record.id,
     headline: record.headline || "",
     subtext: record.subtext || "",
-    subtext_template: record.subtext_template || "",
     icon: record.icon || "",
     background: record.background || "",
     color: record.color || "",
@@ -542,18 +544,13 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       this._formChrome(page, draft.id ? "Edit rule" : "Add rule");
       page.append(this._preview(draft));
 
-      const headline = input("text", draft.headline);
+      const headline = textbox(draft.headline);
       headline.addEventListener("input", () => { draft.headline = headline.value; this._syncPreview(); });
       page.append(field("Headline", headline, HELP.rule.headline, [errors.headline]));
 
-      const subtext = input("text", draft.subtext);
+      const subtext = textbox(draft.subtext);
       subtext.addEventListener("input", () => { draft.subtext = subtext.value; this._syncPreview(); });
       page.append(field("Subtext", subtext, HELP.rule.subtext, [errors.subtext]));
-
-      const template = document.createElement("textarea");
-      template.value = draft.subtext_template || "";
-      template.addEventListener("input", () => { draft.subtext_template = template.value; });
-      page.append(field("Subtext template", template, HELP.rule.subtext_template, [errors.subtext_template]));
 
       const icon = input("text", draft.icon);
       icon.placeholder = "mdi:door-open";

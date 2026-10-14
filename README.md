@@ -6,7 +6,7 @@ Banner Channels is a Home Assistant integration. It decides which alerts are act
 
 **HACS (custom repository):**
 
-1. HACS → ⋮ → Custom repositories → add `https://github.com/sstratoti/alert-ticker-lite-card`, category **Integration**.
+1. HACS → ⋮ → Custom repositories → add `https://github.com/sstratoti/banner-channels`, category **Integration**.
 2. Install **Banner Channels**. Home Assistant **2026.10.0** or newer is required.
 
 **Manual:** copy `custom_components/banner_channels` into the configuration `custom_components` directory and restart Home Assistant.
@@ -45,7 +45,7 @@ Create a channel: name, rotate interval, badge, and empty behavior. Saving it cr
 
 `rotate_interval` is seconds between slides. `0` keeps the first slide on screen. `show_badge` shows the number of active alerts. `empty` is `hide` or `all_clear`.
 
-Create a rule and tag it with one or more channels. A rule with no channel tags produces no slides. Fields: headline, subtext, icon, background and text colors, channels, match, an optional time window, an optional second condition, and tap and hold.
+Create a rule and tag it with one or more channels. A rule with no channel tags produces no slides. Fields: headline, subtext, icon, background and text colors, channels, match, an optional time window, an optional second condition, and tap and hold. In the headline or the subtext, `{name}` and `{state}` are replaced for each match. Text that contains `{{` or `{%` is a Jinja template, with variables `state`, `entity_id`, `name`, and `rule_id`.
 
 ```json
 {
@@ -54,7 +54,6 @@ Create a rule and tag it with one or more channels. A rule with no channel tags 
   "channels": ["channel-uuid"],
   "headline": "Front Door",
   "subtext": "Open",
-  "subtext_template": "",
   "icon": "mdi:door-open",
   "background": "#c62828",
   "color": "#ffffff",

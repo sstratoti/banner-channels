@@ -69,11 +69,11 @@ def _action_error(action: dict | None) -> str | None:
 def validate_rule(data: dict) -> dict[str, str]:
     errors: dict[str, str] = {}
     headline = (data.get("headline") or "").strip()
-    if not headline or len(headline) > 120:
-        errors["headline"] = "Enter a headline up to 120 characters."
+    if not headline or len(headline) > 1000:
+        errors["headline"] = "Enter a headline up to 1000 characters."
     subtext = data.get("subtext") or ""
-    if len(subtext) > 240:
-        errors["subtext"] = "Subtext can be at most 240 characters."
+    if len(subtext) > 1000:
+        errors["subtext"] = "Subtext can be at most 1000 characters."
     if not _ICON.match(data.get("icon") or ""):
         errors["icon"] = "Use an mdi icon."
     for key in ("background", "color"):

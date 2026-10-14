@@ -176,7 +176,7 @@ class BannerRuntime:
         return states
 
     def _render(self, template, variables):
-        key = (variables["rule_id"], variables["entity_id"])
+        key = (variables["rule_id"], variables["entity_id"], template)
         try:
             rendered = Template(template, self.hass).async_render(variables, parse_result=False)
             return "" if rendered is None else str(rendered)

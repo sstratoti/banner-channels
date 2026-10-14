@@ -45,7 +45,6 @@ def _door_rule(**overrides):
         "channels": ["tablets"],
         "headline": "Front Door",
         "subtext": "Open",
-        "subtext_template": "",
         "icon": "mdi:door-open",
         "background": "#c62828",
         "color": "#ffffff",
@@ -140,24 +139,37 @@ def test_time_window_and_placeholders():
     assert slide["secondary"] == "on"
 
 
-def test_template_overrides_subtext_and_errors_fall_back():
-    rule = _door_rule(subtext="plain", subtext_template="{{ name }}")
+def test_either_line_can_be_a_template_and_errors_fall_back():
+    rule = _door_rule(headline="{{ name }} is {state}", subtext="{% if state == 'on' %}Open{% endif %}")
     states = {"binary_sensor.front_door": Snap("on", "Front Door")}
     now = datetime(2026, 10, 13, 12, 0, tzinfo=TZ)
 
     def render(template, variables):
-        assert template == "{{ name }}"
         assert variables["entity_id"] == "binary_sensor.front_door"
-        return variables["name"]
+        assert variables["rule_id"] == "door"
+        if "{{" in template:
+            return variables["name"]
+        return "Open"
 
     ok = evaluate([_channel()], [rule], states, now, render_template=render)
-    assert ok["tablets"]["alerts"][0]["secondary"] == "Front Door"
+    assert ok["tablets"]["alerts"][0]["primary"] == "Front Door"
+    assert ok["tablets"]["alerts"][0]["secondary"] == "Open"
 
     def boom(template, variables):
         raise ValueError("bad template")
 
     bad = evaluate([_channel()], [rule], states, now, render_template=boom)
-    assert bad["tablets"]["alerts"][0]["secondary"] == "plain"
+    assert bad["tablets"]["alerts"][0]["primary"] == "{{ name }} is on"
+    assert bad["tablets"]["alerts"][0]["secondary"] == "{% if state == 'on' %}Open{% endif %}"
+
+    plain = _door_rule(headline="{name}", subtext="{state}")
+
+    def unused(template, variables):
+        raise AssertionError(template)
+
+    kept = evaluate([_channel()], [plain], states, now, render_template=unused)
+    assert kept["tablets"]["alerts"][0]["primary"] == "Front Door"
+    assert kept["tablets"]["alerts"][0]["secondary"] == "on"
 
 
 def test_filter_orders_by_name_and_skips_excludes():
@@ -167,7 +179,6 @@ def test_filter_orders_by_name_and_skips_excludes():
         "channels": ["tablets"],
         "headline": "Low battery {state}",
         "subtext": "{name}",
-        "subtext_template": "",
         "icon": "mdi:battery-alert",
         "match": {
             "kind": "filter",
@@ -228,7 +239,6 @@ def test_watched_ids_include_matches_and_also():
         "channels": ["tablets"],
         "headline": "Low",
         "subtext": "",
-        "subtext_template": "",
         "icon": "mdi:battery-alert",
         "match": {
             "kind": "filter",
@@ -253,7 +263,6 @@ def test_filter_skips_the_channels_own_sensors():
         "channels": ["tablets"],
         "headline": "{name}",
         "subtext": "",
-        "subtext_template": "",
         "icon": "mdi:battery-alert",
         "match": {
             "kind": "filter",
@@ -284,7 +293,6 @@ def test_feed_orders_rules_by_position_then_name_then_entity_id():
         "channels": ["tablets"],
         "headline": "{name}",
         "subtext": "",
-        "subtext_template": "",
         "icon": "mdi:battery-alert",
         "match": {
             "kind": "filter",
@@ -415,7 +423,6 @@ def test_watched_ids_include_filter_matches_that_fail_the_operator():
         "channels": ["tablets"],
         "headline": "Low",
         "subtext": "",
-        "subtext_template": "",
         "icon": "mdi:battery-alert",
         "match": {
             "kind": "filter",

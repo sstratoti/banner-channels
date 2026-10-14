@@ -48,7 +48,6 @@ def _door_rule(**overrides):
     rule = {
         "headline": "Front Door",
         "subtext": "Open",
-        "subtext_template": "",
         "icon": "mdi:door-open",
         "background": "#c62828",
         "color": "#ffffff",
@@ -197,24 +196,36 @@ async def test_invalid_template_does_not_save_a_rule(
         {
             "type": "banner_channels/save",
             "kind": "rule",
-            "record": _door_rule(subtext_template="{{"),
+            "record": _door_rule(headline="{{"),
         },
     )
     assert invalid["success"] is True
-    assert "subtext_template" in invalid["result"]["errors"]
+    assert "headline" in invalid["result"]["errors"]
     listed = await _send(client, {"type": "banner_channels/list"})
     assert listed["result"]["rules"] == []
+
+    invalid_subtext = await _send(
+        client,
+        {
+            "type": "banner_channels/save",
+            "kind": "rule",
+            "record": _door_rule(subtext="{{"),
+        },
+    )
+    assert "subtext" in invalid_subtext["result"]["errors"]
 
     saved = await _send(
         client,
         {
             "type": "banner_channels/save",
             "kind": "rule",
-            "record": _door_rule(subtext_template="{{ name }}"),
+            "record": _door_rule(headline="{{ name }}", subtext="{state}"),
         },
     )
     assert saved["success"] is True
-    assert saved["result"]["record"]["subtext_template"] == "{{ name }}"
+    assert saved["result"]["record"]["headline"] == "{{ name }}"
+    assert saved["result"]["record"]["subtext"] == "{state}"
+    assert "subtext_template" not in saved["result"]["record"]
     assert saved["result"]["record"]["position"] == 0
 
 

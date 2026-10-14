@@ -75,7 +75,6 @@ Ids are UUID strings. `position` is an integer. Lists are shown and rotated in a
   "channels": ["channel-uuid"],
   "headline": "Front Door",
   "subtext": "Open",
-  "subtext_template": "",
   "icon": "mdi:door-open",
   "background": "#c62828",
   "color": "#ffffff",
@@ -96,9 +95,9 @@ Ids are UUID strings. `position` is an integer. Lists are shown and rotated in a
 }
 ```
 
-- `headline` is required, trimmed, at most 120 characters.
-- `subtext` is optional, at most 240 characters.
-- `subtext_template` is optional Jinja. When it is non-empty after trimming, its rendered output replaces `subtext` for that slide.
+- `headline` is required, trimmed, at most 1000 characters.
+- `subtext` is optional, trimmed, at most 1000 characters.
+- Either field is plain text, or a Jinja template when it contains `{{` or `{%`. There is no separate template field.
 - `icon` is required and matches `mdi:` plus lowercase letters, digits, and hyphens.
 - `background` and `color` are optional. When set, they are `#` plus six hex digits. When omitted or empty, the card uses the dashboard theme for that part. The icon uses the text color whenever a text color is set.
 - `channels` is a list of channel ids. Unknown ids are dropped at evaluation time.
@@ -139,12 +138,14 @@ Ids are UUID strings. `position` is an integer. Lists are shown and rotated in a
 
 ### Placeholders and templates
 
-`{state}` and `{name}` in `headline` and `subtext` are plain replacements, not Jinja.
+`headline` and `subtext` each accept plain text or a Jinja template.
+
+`{state}` and `{name}` are plain replacements when the field does not contain `{{` or `{%`.
 
 - `{state}` is the matched entity's state string.
 - `{name}` is the friendly name, or the entity id when there is no friendly name.
 
-`subtext_template` is rendered by Home Assistant's template engine with `parse_result` false, so the slide's `secondary` is always a string. Variables: `state`, `entity_id`, `name`, and `rule_id`. A render error is logged once per rule id and slide entity, and that slide falls back to the already-substituted `subtext`. The editor checks that the template parses before save.
+A field that contains `{{` or `{%` is rendered by Home Assistant's template engine with `parse_result` false, so the slide text stays a string. Variables: `state`, `entity_id`, `name`, and `rule_id`. A render error is logged once per rule id, slide entity, and template. That line then falls back to the plain `{state}` and `{name}` substitution of the same field. The editor checks that a template parses before save. The sidebar preview shows the field text and does not render Jinja.
 
 ### Actions
 
@@ -249,9 +250,8 @@ Rule fields:
 
 | Field | Help |
 | --- | --- |
-| Headline | Main line. `{name}` and `{state}` are replaced for each match. |
-| Subtext | Second line. `{name}` and `{state}` are replaced for each match. |
-| Subtext template | Optional Jinja. When set, its output replaces the subtext. Variables: `state`, `entity_id`, `name`, `rule_id`. |
+| Headline | Main line. `{name}` and `{state}` are replaced for each match. Text with `{{` or `{%` is a Jinja template. Variables: `state`, `entity_id`, `name`, `rule_id`. |
+| Subtext | Second line. Same replacements and templates as the headline. |
 | Icon | An mdi icon, such as `mdi:door-open`. It uses the text color. |
 | Background | Banner color. Leave blank to use the dashboard theme. |
 | Text color | Text and icon color. Leave blank to use the dashboard theme. |

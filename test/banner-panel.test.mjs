@@ -32,12 +32,11 @@ test("help sentences match the sidebar spec", () => {
   );
   assert.equal(HELP.channel.all_clear_text, "Shown when this channel has no matching alerts.");
   assert.equal(HELP.channel.all_clear_icon, "Optional icon beside the all-clear text.");
-  assert.equal(HELP.rule.headline, "Main line. {name} and {state} are replaced for each match.");
-  assert.equal(HELP.rule.subtext, "Second line. {name} and {state} are replaced for each match.");
   assert.equal(
-    HELP.rule.subtext_template,
-    "Optional Jinja. When set, its output replaces the subtext. Variables: state, entity_id, name, rule_id.",
+    HELP.rule.headline,
+    "Main line. {name} and {state} are replaced for each match. Text with {{ or {% is a Jinja template. Variables: state, entity_id, name, rule_id.",
   );
+  assert.equal(HELP.rule.subtext, "Second line. Same replacements and templates as the headline.");
   assert.equal(HELP.rule.icon, "An mdi icon, such as mdi:door-open. It uses the text color.");
   assert.equal(HELP.rule.background, "Banner color. Leave blank to use the dashboard theme.");
   assert.equal(HELP.rule.color, "Text and icon color. Leave blank to use the dashboard theme.");
@@ -82,7 +81,6 @@ test("rule record parses service data and numeric comparisons", () => {
   const built = ruleRecord({
     headline: "Low battery",
     subtext: "{state}",
-    subtext_template: "",
     icon: "mdi:battery",
     background: "#c62828",
     color: "  ",
@@ -117,6 +115,7 @@ test("rule record parses service data and numeric comparisons", () => {
   assert.equal(built.record.tap_action.data.brightness, 10);
   assert.equal(Object.hasOwn(built.record.tap_action, "target"), false);
   assert.equal(built.record.hold_action, undefined);
+  assert.equal(Object.hasOwn(built.record, "subtext_template"), false);
 });
 
 test("empty service data is omitted and invalid JSON stays on the form", () => {

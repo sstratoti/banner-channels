@@ -5,7 +5,7 @@
   "config_flow": true,
   "dependencies": ["http", "frontend", "lovelace", "panel_custom"],
   "single_config_entry": true,
-  "documentation": "https://github.com/sstratoti/alert-ticker-lite-card",
+  "documentation": "https://github.com/sstratoti/banner-channels",
   "integration_type": "hub",
   "iot_class": "local_push",
   "version": "0.1.0"

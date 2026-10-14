@@ -36,7 +36,7 @@ Depends on `docs/superpowers/plans/2026-10-13-banner-channels-evaluator.md` and 
 - Consumes: `feed_signature`
 - Produces: `changed_feeds(previous: dict[str, str], feeds: dict[str, dict]) -> tuple[dict[str, dict], dict[str, str]]`. The first item is the feeds to write. The second is the full new signature map, including channels whose signature did not change.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test** `576396f`
 
 Append to `tests/test_evaluate.py`:
 
@@ -54,13 +54,13 @@ def test_changed_feeds_skips_an_unchanged_channel():
     assert set(sigs) == {"tablets", "phone"}
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails** `576396f`
 
 Run: `python -m pytest tests/test_evaluate.py::test_changed_feeds_skips_an_unchanged_channel -q`
 
 Expected: FAIL with `ImportError: cannot import name 'changed_feeds'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation** `e97adc6`
 
 Append to `custom_components/banner_channels/evaluate.py`:
 
@@ -75,13 +75,13 @@ def changed_feeds(previous: dict[str, str], feeds: dict[str, dict]) -> tuple[dic
     return changed, signatures
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes** `e97adc6`
 
 Run: `python -m pytest tests/test_evaluate.py -q`
 
 Expected: `13 passed`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit** `e97adc6`
 
 ```bash
 git add custom_components/banner_channels/evaluate.py tests/test_evaluate.py

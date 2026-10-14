@@ -107,7 +107,7 @@ git commit -m "feat: publish a banner feed only when it changes"
 - Consumes: `evaluate`, `changed_feeds`, `watched_entity_ids`, `Snap`, `slugify`, `validate_channel`, `validate_rule`
 - Produces: `hass.data["banner_channels"][entry_id]` is a `BannerRuntime` with `store`, `async_update_record(kind, record)`, `async_delete_record(kind, record_id)`, `async_reorder(kind, ids)`, and `snapshot()` returning `{"channels": [...], "rules": [...]}`
 
-- [ ] **Step 1: Write the manifest, constants, and strings**
+- [x] **Step 1: Write the manifest, constants, and strings** `6dfabc5`
 
 `custom_components/banner_channels/manifest.json`:
 
@@ -152,7 +152,7 @@ UNRECORDED = frozenset({"alerts", "all_clear", "rotate_interval", "show_badge", 
 }
 ```
 
-- [ ] **Step 2: Write the config flow and store**
+- [x] **Step 2: Write the config flow and store** `6dfabc5`
 
 `custom_components/banner_channels/config_flow.py`:
 
@@ -197,7 +197,7 @@ class BannerStore:
         await self._store.async_save(self.data)
 ```
 
-- [ ] **Step 3: Write the runtime and sensor**
+- [x] **Step 3: Write the runtime and sensor** `6dfabc5`
 
 Create `custom_components/banner_channels/runtime.py`:
 
@@ -398,7 +398,7 @@ Websocket schemas use `voluptuous` as Home Assistant re-exports it. Do not insta
 
 Add `translations/en.json` to the commit in step 6.
 
-- [ ] **Step 4: Write setup and unload**
+- [x] **Step 4: Write setup and unload** `6dfabc5`
 
 `custom_components/banner_channels/__init__.py` loads the store, starts the runtime, forwards the sensor platform, and on unload stops listeners and unloads the platform. Refuse a second entry by the config flow, not here.
 
@@ -406,7 +406,7 @@ Add `translations/en.json` to the commit in step 6.
 
 Steve installs this. Reading Home Assistant config, logs, and state is allowed. Do not copy files into the Home Assistant config, change Lovelace or the entity registry, call services, restart Home Assistant, or otherwise write to a production service. A `docker exec` that only prints information is allowed. After the code commit, stop and tell Steve to copy `custom_components/banner_channels` into Home Assistant's `custom_components` directory and restart. Steve adds Banner Channels from Settings, Devices & services. Expected once Steve reports back: the entry exists, a second add aborts with "Banner Channels is already set up", and no sensors exist until a channel is saved from the sidebar in Task 3.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit** `6dfabc5`
 
 ```bash
 git add custom_components/banner_channels/manifest.json \

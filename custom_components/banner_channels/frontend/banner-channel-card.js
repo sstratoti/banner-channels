@@ -1,5 +1,5 @@
 import {
-  validateConfig, stubEntity, CARD_EDITOR_SCHEMA, feedSignature, nextIndex, viewMode, slideCounter, describeAction, resolveIcon, severityLook,
+  validateConfig, stubEntity, cardLayout, CARD_EDITOR_SCHEMA, cardEditorLabel, cardEditorHelper, feedSignature, nextIndex, viewMode, slideCounter, describeAction, resolveIcon, severityLook,
 } from "./banner-core.js";
 
 const Panel = customElements.get("ha-panel-lovelace") || customElements.get("hui-view");
@@ -144,13 +144,15 @@ class BannerChannelCard extends LitElement {
   render() {
     if (!this._config || !this._hass) return html``;
     this._syncHost();
+    const layout = cardLayout(this._config);
+    const sized = `--banner-height:${layout.height}px;--banner-headline:${layout.headline}px;--banner-subtext:${layout.subtext}px;--banner-icon:${layout.icon}px;--banner-severity:${layout.severity}px;--banner-counter:${layout.counter}px;--banner-gap:${layout.gap}px`;
     if (this._mode === "unavailable") {
-      return html`<ha-card><div class="row muted">Banner unavailable</div></ha-card>`;
+      return html`<ha-card style=${sized}><div class="row muted ${layout.align === "center" ? "center" : ""}">Banner unavailable</div></ha-card>`;
     }
     if (this._mode === "hide") return html``;
     if (this._mode === "all_clear") {
       const clear = this._attrs.all_clear || {};
-      return html`<ha-card><div class="row">
+      return html`<ha-card style=${sized}><div class="row ${layout.align === "center" ? "center" : ""}">
         ${clear.icon ? html`<ha-icon icon="${clear.icon}"></ha-icon>` : ""}
         <div class="text"><div class="primary">${clear.text || "All clear"}</div></div>
       </div></ha-card>`;
@@ -170,8 +172,8 @@ class BannerChannelCard extends LitElement {
       @pointermove=${(event) => this._onPointerMove(event)}
       @pointerup=${() => this._onPointerUp()}
       @pointercancel=${() => this._clearPointer()}
-      style="cursor:pointer">
-      <div class="row ${look && look.accent ? "accent" : ""} ${counter ? "has-counter" : ""} ${this._fading ? "fade-out" : ""}" style=${rowStyle}>
+      style="cursor:pointer;${sized}">
+      <div class="row ${layout.align === "center" ? "center" : ""} ${look && look.accent ? "accent" : ""} ${counter ? "has-counter" : ""} ${this._fading ? "fade-out" : ""}" style=${rowStyle}>
         <ha-icon icon="${icon}" style=${iconStyle}></ha-icon>
         <div class="text" style=${textStyle}>
           ${look ? html`<div class="severity" style="color:${look.color}">${look.label}</div>` : ""}
@@ -183,34 +185,43 @@ class BannerChannelCard extends LitElement {
     </ha-card>`;
   }
 
-  getCardSize() { return this._mode === "hide" ? 0 : 1; }
+  getCardSize() {
+    if (this._mode === "hide") return 0;
+    return Math.max(1, Math.ceil(cardLayout(this._config).height / 50));
+  }
 
   static get styles() {
     return css`
       ha-card { overflow: hidden; }
       .row {
         position: relative;
-        display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+        display: flex; align-items: center;
+        gap: var(--banner-gap, 12px);
+        min-height: var(--banner-height, 80px);
+        padding: 8px 16px;
+        box-sizing: border-box;
         opacity: 1; transition: opacity 0.18s ease;
       }
-      .row.accent { border-left: 3px solid transparent; padding-left: 11px; }
-      .row.has-counter { padding-right: 46px; }
+      .row.center { justify-content: center; }
+      .row.center .text { flex: 0 1 auto; align-items: center; text-align: center; }
+      .row.accent { border-left: 3px solid transparent; padding-left: 13px; }
+      .row.has-counter { padding-right: calc(var(--banner-counter, 12px) * 3.4); }
       .fade-out { opacity: 0; }
       .counter {
-        position: absolute; top: 6px; right: 10px;
-        font-size: 11px; font-weight: 700; letter-spacing: 0.04em; line-height: 1;
+        position: absolute; top: 8px; right: 12px;
+        font-size: var(--banner-counter, 12px); font-weight: 700; letter-spacing: 0.04em; line-height: 1;
         color: var(--secondary-text-color, #727272);
         pointer-events: none; white-space: nowrap;
       }
-      ha-icon { --mdc-icon-size: 28px; flex: 0 0 auto; display: flex; }
+      ha-icon { --mdc-icon-size: var(--banner-icon, 40px); flex: 0 0 auto; display: flex; }
       .text { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
       .severity, .primary, .secondary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .severity {
-        font-size: 10px; font-weight: 700; line-height: 1.3;
+        font-size: var(--banner-severity, 11px); font-weight: 700; line-height: 1.3;
         letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 1px;
       }
-      .primary { font-size: 16px; font-weight: 600; line-height: 1.3; }
-      .secondary { font-size: 13px; line-height: 1.35; opacity: 0.75; }
+      .primary { font-size: var(--banner-headline, 22px); font-weight: 600; line-height: 1.25; }
+      .secondary { font-size: var(--banner-subtext, 16px); line-height: 1.3; opacity: 0.75; }
       .muted { color: var(--secondary-text-color); }
     `;
   }
@@ -252,7 +263,14 @@ class BannerChannelCardEditor extends LitElement {
   }
 
   setConfig(config) {
-    this._config = { entity: (config && config.entity) || "" };
+    const source = config || {};
+    this._config = {
+      entity: source.entity || "",
+      height: source.height,
+      headline_size: source.headline_size,
+      subtext_size: source.subtext_size,
+      align: source.align || "left",
+    };
   }
 
   render() {
@@ -262,8 +280,8 @@ class BannerChannelCardEditor extends LitElement {
         .hass=${this.hass}
         .data=${this._config}
         .schema=${CARD_EDITOR_SCHEMA}
-        .computeLabel=${() => "Channel"}
-        .computeHelper=${() => "Pick the sensor for this channel."}
+        .computeLabel=${(schema) => cardEditorLabel(schema)}
+        .computeHelper=${(schema) => cardEditorHelper(schema)}
         @value-changed=${(event) => {
           fireEvent(this, "config-changed", { config: event.detail.value });
         }}

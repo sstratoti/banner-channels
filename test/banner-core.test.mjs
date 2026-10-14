@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  validateConfig, stubEntity, CARD_EDITOR_SCHEMA, feedSignature, nextIndex, viewMode, showBadge, slideCounter, describeAction, resolveIcon, severityLook,
+  validateConfig, stubEntity, cardLayout, cardEditorLabel, CARD_EDITOR_SCHEMA, feedSignature, nextIndex, viewMode, showBadge, slideCounter, describeAction, resolveIcon, severityLook,
 } from "../custom_components/banner_channels/frontend/banner-core.js";
 
 test("validateConfig requires an entity string", () => {
@@ -35,7 +35,41 @@ test("stubEntity prefers a Banner Channels sensor", () => {
     "sensor.banner_front",
   );
   assert.equal(CARD_EDITOR_SCHEMA[0].selector.entity.integration, "banner_channels");
-  assert.equal(CARD_EDITOR_SCHEMA[0].name, "entity");
+  assert.equal(CARD_EDITOR_SCHEMA.map((field) => field.name).join(","), "entity,height,headline_size,subtext_size,align");
+  assert.equal(cardEditorLabel({ name: "height" }), "Height");
+  assert.equal(cardEditorLabel({ name: "headline_size" }), "Headline size");
+});
+
+test("card layout defaults to a taller banner and keeps per-card sizes", () => {
+  assert.deepEqual(cardLayout({}), {
+    height: 80, headline: 22, subtext: 16, icon: 40, severity: 11, counter: 11, gap: 11, align: "left",
+  });
+  assert.equal(cardLayout({ align: "center" }).align, "center");
+  assert.equal(cardLayout({ align: "middle" }).align, "left");
+  assert.deepEqual(cardLayout({ height: 120, headline_size: 32, subtext_size: 20 }), {
+    height: 120, headline: 32, subtext: 20, icon: 60, severity: 16, counter: 14, gap: 17, align: "left",
+  });
+  const kept = validateConfig({
+    entity: "sensor.banner_tablets",
+    height: "96",
+    headline_size: 28,
+    subtext_size: 18,
+  });
+  assert.deepEqual(kept, {
+    entity: "sensor.banner_tablets",
+    height: 96,
+    headline_size: 28,
+    subtext_size: 18,
+  });
+  assert.throws(
+    () => validateConfig({ entity: "sensor.banner_tablets", height: "tall" }),
+    /pixels/,
+  );
+  assert.equal(validateConfig({ entity: "sensor.banner_tablets", align: "center" }).align, "center");
+  assert.throws(
+    () => validateConfig({ entity: "sensor.banner_tablets", align: "middle" }),
+    /left or center/,
+  );
 });
 
 test("viewMode distinguishes unavailable, hide, all-clear, and alerts", () => {

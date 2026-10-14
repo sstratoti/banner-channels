@@ -8,10 +8,10 @@ HACS custom repository: `https://github.com/sstratoti/banner-channels`, category
 
 Manual install: copy `custom_components/banner_channels` into the configuration `custom_components` directory and restart Home Assistant.
 
-Card module: `/banner_channels/banner-channel-card.js?v=0.2.0`. YAML-mode Lovelace adds that URL as a module resource. Storage mode gets it from the integration.
+Card module: `/banner_channels/banner-channel-card.js?v=0.3.0`. YAML-mode Lovelace adds that URL as a module resource. Storage mode gets it from the integration.
 
 ```yaml
-url: /banner_channels/banner-channel-card.js?v=0.2.0
+url: /banner_channels/banner-channel-card.js?v=0.3.0
 type: module
 ```
 

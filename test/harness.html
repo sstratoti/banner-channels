@@ -10,7 +10,7 @@
     .caption { margin: 0 0 18px; color: #5f6368; font-size: 13px; }
     button { margin: 2px; }
     ha-card { display: block; background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
-    ha-icon { display: inline-flex; width: 28px; height: 28px; border-radius: 50%; background: currentColor; color: #212121; }
+    ha-icon { display: inline-flex; width: var(--mdc-icon-size, 40px); height: var(--mdc-icon-size, 40px); border-radius: 50%; background: currentColor; color: #212121; }
   </style>
 </head>
 <body>
@@ -121,7 +121,7 @@
       primary: three[index % three.length].primary + " " + (index + 1),
     }));
     const gallery = document.getElementById("gallery");
-    function still(caption, state, attributes, index) {
+    function still(caption, state, attributes, index, config) {
       const wrap = document.createElement("div");
       wrap.className = "card-wrap";
       const note = document.createElement("p");
@@ -129,7 +129,7 @@
       note.textContent = caption;
       gallery.append(wrap, note);
       const stillCard = document.createElement("banner-channel-card");
-      stillCard.setConfig({ entity });
+      stillCard.setConfig({ entity, ...(config || {}) });
       wrap.appendChild(stillCard);
       stillCard.hass = {
         states: { [entity]: { state, attributes } },
@@ -140,6 +140,17 @@
         stillCard.requestUpdate();
       }
     }
+    still("Default. 80px tall, 22px headline, 16px subtext. The icon is half the height.", "1", feed({ rotate_interval: 0, alerts: [three[1]] }));
+    still("Wall dashboard. Taller row and larger type.", "1", feed({ rotate_interval: 0, alerts: [three[1]] }), 0, {
+      height: 120, headline_size: 32, subtext_size: 20,
+    });
+    still("Phone. Shorter row and smaller type.", "1", feed({ rotate_interval: 0, alerts: [three[1]] }), 0, {
+      height: 52, headline_size: 15, subtext_size: 12,
+    });
+    still("Centered. The icon and the lines sit in the middle. The counter stays at the top right.", "2", feed({
+      rotate_interval: 0,
+      alerts: [three[1], three[2]],
+    }), 0, { align: "center" });
     still("Slide 3 of 9. The counter is the current slide, not the old total.", "9", feed({ rotate_interval: 0, alerts: nine }), 2);
     still("Warning, no custom color. Accent bar on the left.", "3", feed({ rotate_interval: 0, alerts: three }), 1);
     still("One alert. The counter stays hidden.", "1", feed({ rotate_interval: 0, alerts: [three[2]] }));

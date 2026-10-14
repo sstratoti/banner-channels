@@ -276,9 +276,9 @@ Rule fields:
 
 ## Banner Channel card
 
-Configuration is one field: `entity`, the channel sensor. `setConfig` throws if `entity` is missing or not a string.
+Configuration is `entity`, the channel sensor, plus optional `height`, `headline_size`, and `subtext_size` in pixels, and optional `align` of `left` or `center`. Blank sizes use 80, 22, and 16. Blank alignment is left. Center places the icon and text in the middle. The slide counter stays at the top right. The icon is half the height. `setConfig` throws if `entity` is missing or not a string, if a size is present and not a positive number, or if `align` is anything other than left or center.
 
-The card reuses the LitElement Home Assistant has already loaded (`ha-panel-lovelace`'s prototype) and HA's `<ha-icon>`. It does not bundle Lit and does not load a CDN. Lovelace finds the card as the element `banner-channel`. The same class is also registered as `banner-channel-card`. The Add card dialog lists Banner Channel. Its visual editor is one Channel field, an entity picker limited to Banner Channels sensors. The suggested sensor is the first channel already created. YAML with `type: custom:banner-channel` and `entity` still works. Transitions are opacity only (180ms). No transform, filter, shadow, or keyframe animation.
+The card reuses the LitElement Home Assistant has already loaded (`ha-panel-lovelace`'s prototype) and HA's `<ha-icon>`. It does not bundle Lit and does not load a CDN. Lovelace finds the card as the element `banner-channel`. The same class is also registered as `banner-channel-card`. The Add card dialog lists Banner Channel. Its visual editor is the channel sensor plus height, headline size, subtext size, and alignment. The suggested sensor is the first channel already created. YAML with `type: custom:banner-channel` and `entity` still works. Transitions are opacity only (180ms). No transform, filter, shadow, or keyframe animation.
 
 Render:
 
@@ -288,7 +288,7 @@ Render:
 - State available, `alerts` empty, `empty` is `all_clear`: show that icon and text. A tap uses no action.
 - Otherwise draw the current alert: icon, optional severity label, primary, optional secondary. Apply `background` on the row and `color` on the text and icon when those attributes are present. When `show_badge` is true and more than one alert is active, show `current/total` at the top right, such as `3/9`. One alert hides that counter.
 - When the slide has a `severity`, a small uppercase label (Information, Warning, Problem) sits above the primary line. The icon is the slide's `icon` when that is set. Otherwise it is the channel `severity_styles` icon for that level, then `mdi:information`, `mdi:alert`, or `mdi:alert-circle`. The label color is the slide's `color` when set, otherwise the channel severity color, otherwise the theme's `--info-color`, `--warning-color`, or `--error-color`. A channel severity color also tints the icon. A slide `color` tints the icon, the label, and the headline, and leaves the accent on the severity color. Without a `background`, the row gets a 3px left accent in the severity color (the channel color when set, otherwise the theme color). A `background` replaces the accent.
-- Layout: 28px icon, 16px/600 primary, 13px secondary at reduced opacity, 10px by 14px padding, 12px gap, badge centered with the icon. Each line is one line with an ellipsis.
+- Layout uses the card's height, headline size, and subtext size. The icon is half the height. The severity label is half the headline size. Each line is one line with an ellipsis.
 
 Rotation: one `setInterval` when `rotate_interval > 0`, the page is visible, and there is more than one alert. The interval is cleared on disconnect, when the feed signature changes, and while `document.hidden` is true. Visibility changes restart or stop the timer. A fade in progress is cancelled when the timer stops or the feed changes.
 
@@ -300,7 +300,7 @@ The card re-renders when the feed signature changes, and when rotation advances 
 
 ## Out of scope
 
-Snooze, blink, double-tap, themes, sound, a visual editor inside the dashboard card, per-card overrides, Node-RED rotation, and importing AlertTicker or button-card config.
+Snooze, blink, double-tap, themes, sound, Node-RED rotation, and importing AlertTicker or button-card config.
 
 ## Testing
 

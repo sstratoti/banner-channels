@@ -13,12 +13,12 @@ Banner Channels is a Home Assistant integration. It decides which alerts are act
 
 After the integration is added, the card module is:
 
-`/banner_channels/banner-channel-card.js?v=0.2.0`
+`/banner_channels/banner-channel-card.js?v=0.3.0`
 
 YAML-mode Lovelace adds that URL as a module resource:
 
 ```yaml
-url: /banner_channels/banner-channel-card.js?v=0.2.0
+url: /banner_channels/banner-channel-card.js?v=0.3.0
 type: module
 ```
 
@@ -79,7 +79,12 @@ On a dashboard, choose Add card and pick Banner Channel. The editor asks for the
 ```yaml
 type: custom:banner-channel
 entity: sensor.banner_tablets
+height: 120
+headline_size: 32
+subtext_size: 20
 ```
+
+`height`, `headline_size`, and `subtext_size` are optional pixels. Leave them out for 80, 22, and 16. The icon is half the height. A wall dashboard can use the larger numbers. A phone can use something like `height: 52`, `headline_size: 15`, and `subtext_size: 12`. `align` is `left` or `center`. Left is the default. Center places the icon and text in the middle, and the slide counter stays at the top right.
 
 The sensor state is the active slide count. Rotation, colors, and the alert list come from the sensor:
 

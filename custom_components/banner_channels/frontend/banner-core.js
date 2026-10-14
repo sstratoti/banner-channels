@@ -1,8 +1,50 @@
+const LAYOUT_FIELDS = [
+  ["height", 80, 32, 320],
+  ["headline_size", 22, 10, 96],
+  ["subtext_size", 16, 10, 72],
+];
+
 export function validateConfig(config) {
   if (!config || typeof config.entity !== "string" || !config.entity) {
     throw new Error("You must define an entity");
   }
-  return { entity: config.entity };
+  const result = { entity: config.entity };
+  for (const [key] of LAYOUT_FIELDS) {
+    if (config[key] == null || config[key] === "") continue;
+    const number = Number(config[key]);
+    if (!Number.isFinite(number) || number <= 0) {
+      throw new Error("Height and font sizes must be numbers of pixels");
+    }
+    result[key] = number;
+  }
+  if (config.align != null && config.align !== "") {
+    const align = String(config.align);
+    if (align !== "left" && align !== "center") {
+      throw new Error("Alignment must be left or center.");
+    }
+    result.align = align;
+  }
+  return result;
+}
+
+export function cardLayout(config) {
+  const source = config || {};
+  const values = {};
+  for (const [key, fallback, min, max] of LAYOUT_FIELDS) {
+    const number = Number(source[key]);
+    const chosen = Number.isFinite(number) && number > 0 ? number : fallback;
+    values[key] = Math.min(max, Math.max(min, Math.round(chosen)));
+  }
+  return {
+    height: values.height,
+    headline: values.headline_size,
+    subtext: values.subtext_size,
+    icon: Math.max(24, Math.round(values.height * 0.5)),
+    severity: Math.max(10, Math.round(values.headline_size * 0.5)),
+    counter: Math.max(11, Math.round(values.headline_size * 0.45)),
+    gap: Math.max(10, Math.round(values.height * 0.14)),
+    align: source.align === "center" ? "center" : "left",
+  };
 }
 
 export function stubEntity(hass) {
@@ -28,7 +70,55 @@ export const CARD_EDITOR_SCHEMA = [
     required: true,
     selector: { entity: { domain: "sensor", integration: "banner_channels" } },
   },
+  {
+    name: "height",
+    selector: { number: { min: 32, max: 320, step: 1, unit_of_measurement: "px", mode: "box" } },
+  },
+  {
+    name: "headline_size",
+    selector: { number: { min: 10, max: 96, step: 1, unit_of_measurement: "px", mode: "box" } },
+  },
+  {
+    name: "subtext_size",
+    selector: { number: { min: 10, max: 72, step: 1, unit_of_measurement: "px", mode: "box" } },
+  },
+  {
+    name: "align",
+    selector: {
+      select: {
+        options: [
+          { value: "left", label: "Left" },
+          { value: "center", label: "Center" },
+        ],
+        mode: "dropdown",
+      },
+    },
+  },
 ];
+
+const CARD_EDITOR_LABELS = {
+  entity: "Channel",
+  height: "Height",
+  headline_size: "Headline size",
+  subtext_size: "Subtext size",
+  align: "Alignment",
+};
+
+const CARD_EDITOR_HELPERS = {
+  entity: "Pick the sensor for this channel.",
+  height: "Minimum height of the banner. The icon grows with it. Leave blank for 80px.",
+  headline_size: "Size of the main line. Leave blank for 22px.",
+  subtext_size: "Size of the second line. Leave blank for 16px.",
+  align: "Left keeps the icon and text at the start. Center places them in the middle. The slide counter stays at the top right.",
+};
+
+export function cardEditorLabel(schema) {
+  return CARD_EDITOR_LABELS[schema && schema.name] || "";
+}
+
+export function cardEditorHelper(schema) {
+  return CARD_EDITOR_HELPERS[schema && schema.name] || "";
+}
 
 export function viewMode(state, attributes) {
   const attrs = attributes || {};

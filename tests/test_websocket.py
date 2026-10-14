@@ -12,7 +12,7 @@ from custom_components.banner_channels import async_register_card_resource
 from custom_components.banner_channels.const import DOMAIN
 
 CARD_PATH = "/banner_channels/banner-channel-card.js"
-CARD_URL = "/banner_channels/banner-channel-card.js?v=0.2.0"
+CARD_URL = "/banner_channels/banner-channel-card.js?v=0.3.0"
 
 
 async def _frontend_ready(hass, config):

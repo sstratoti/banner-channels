@@ -1,117 +1,115 @@
-# Alert Ticker Lite
+# Banner Channels
 
-A lightweight, HACS-installable Home Assistant custom card that shows a rotating
-"ticker" of active alerts — a count badge, an mdi icon, a headline, and subtext —
-and cycles through them client-side. It is built to run smoothly on low-power
-**wall-mounted tablets** and the iOS app, where heavier alert cards lag.
-
-**Why it exists.** The excellent but feature-packed
-[AlertTicker-Card](https://github.com/djdevil/AlertTicker-Card) ships a ~488 KB
-card (plus a ~520 KB editor) with hundreds of CSS animations, blur/`filter`
-effects, live-camera backgrounds, a bundled `d3`, TTS, push, a music-player mode,
-weather widgets, history and snooze. On weak tablet GPUs that combination causes
-severe repaint/compositing lag. **Alert Ticker Lite** does one thing — render a
-rotating list fed by a single sensor — in a single small file (**< 15 KB**, no
-bundled libraries), using only `opacity` transitions. Your automation platform
-(e.g. **Node-RED**) stays the source of truth for *which* alerts exist.
+Banner Channels is a Home Assistant integration. It decides which alerts are active. Banner Channel is the dashboard card. It draws the feed for one channel.
 
 ## Install
 
 **HACS (custom repository):**
-1. HACS → ⋮ → *Custom repositories* → add
-   `https://github.com/sstratoti/alert-ticker-lite-card`, category **Lovelace**.
-2. Install **Alert Ticker Lite**, then reload resources (HACS adds the resource
-   automatically).
 
-**Manual:** copy `alert-ticker-lite-card.js` and the `lib/` folder into
-`config/www/alert-ticker-lite-card/`, then add a Lovelace resource:
+1. HACS → ⋮ → Custom repositories → add `https://github.com/sstratoti/alert-ticker-lite-card`, category **Integration**.
+2. Install **Banner Channels**. Home Assistant **2026.10.0** or newer is required.
+
+**Manual:** copy `custom_components/banner_channels` into the configuration `custom_components` directory and restart Home Assistant.
+
+After the integration is added, the card module is:
+
+`/banner_channels/banner-channel-card.js?v=0.1.0`
+
+YAML-mode Lovelace adds that URL as a module resource:
 
 ```yaml
-url: /local/alert-ticker-lite-card/alert-ticker-lite-card.js
+url: /banner_channels/banner-channel-card.js?v=0.1.0
 type: module
 ```
 
-## The sensor contract
+Storage mode gets the resource from the integration.
 
-The card is read-only. Point it at **one** sensor whose **state is the alert
-count** and whose **`alerts` attribute is the array** to display:
+## Use
 
-```yaml
-sensor.alert_ticker
-  state: 3                         # active-alert count → the badge
-  attributes:
-    alerts:
-      - icon: mdi:water-alert      # required (mdi:)
-        primary: "Basement leak"   # required — headline
-        secondary: "Leak Sensor 3 · 2m ago"   # optional — subtext
-        color: "#e53935"           # optional — per-alert accent (icon tint)
-        tap_action:                # optional — overrides the card-level tap
-          action: navigate
-          navigation_path: /lovelace/alerts
-      - icon: mdi:garage-open
-        primary: "Garage door open"
-        secondary: "14 min"
+Add Banner Channels once under **Settings → Devices & services**. Open the Banner Channels sidebar page.
+
+Create a channel: name, rotate interval, badge, and empty behavior. Saving it creates one sensor. The entity id is assigned from the name and does not change if you rename the channel.
+
+```json
+{
+  "id": "uuid",
+  "name": "Tablets",
+  "entity_id": "sensor.banner_tablets",
+  "position": 0,
+  "rotate_interval": 10,
+  "show_badge": true,
+  "empty": "hide",
+  "all_clear": { "icon": "mdi:check-circle", "text": "All clear" }
+}
 ```
 
-- If the state is not numeric, the badge falls back to `alerts.length`.
-- Items missing `icon` or `primary` are skipped defensively.
-- An empty/missing `alerts` array shows the optional all-clear row.
+`rotate_interval` is seconds between slides. `0` keeps the first slide on screen. `show_badge` shows the number of active alerts. `empty` is `hide` or `all_clear`.
 
-See [`examples/node-red-sensor.md`](examples/node-red-sensor.md) for how to
-populate this sensor from Node-RED.
+Create a rule and tag it with one or more channels. A rule with no channel tags produces no slides. Fields: headline, subtext, icon, background and text colors, channels, match, an optional time window, an optional second condition, and tap and hold.
 
-## Card configuration
-
-```yaml
-type: custom:alert-ticker-lite-card
-entity: sensor.alert_ticker         # required
-rotate_interval: 5                  # seconds between alerts; 0 = static. default 5
-transition: fade                    # fade | none. default fade
-attribute: alerts                   # attribute holding the array. default 'alerts'
-show_badge: true                    # show the count badge. default true
-tap_action: { action: more-info }               # card-level default
-hold_action: { action: navigate, navigation_path: /lovelace/alerts }
-double_tap_action: { action: none }
-all_clear:                          # shown when count = 0 (optional)
-  icon: mdi:check-circle
-  text: "All clear"
+```json
+{
+  "id": "uuid",
+  "position": 0,
+  "channels": ["channel-uuid"],
+  "headline": "Front Door",
+  "subtext": "Open",
+  "subtext_template": "",
+  "icon": "mdi:door-open",
+  "background": "#c62828",
+  "color": "#ffffff",
+  "match": {
+    "kind": "entity",
+    "entity_id": "binary_sensor.front_door_is_open",
+    "operator": "is",
+    "value": "on"
+  },
+  "when": { "from": "20:00", "to": "04:00" },
+  "also": {
+    "entity_id": "sensor.litter_robot_right_status_code",
+    "operator": "is_not",
+    "value": "ccp"
+  },
+  "tap_action": { "action": "more-info" },
+  "hold_action": { "action": "none" }
+}
 ```
 
-| Option | Default | Notes |
-|---|---|---|
-| `entity` | — | **Required.** The alert sensor. |
-| `rotate_interval` | `5` | Seconds per alert. `0` = no rotation (static). |
-| `transition` | `fade` | `fade` (opacity) or `none`. |
-| `attribute` | `alerts` | Attribute holding the alert array. |
-| `show_badge` | `true` | Hide with `false`; auto-hidden when count is 0. |
-| `tap_action` / `hold_action` / `double_tap_action` | `more-info` / — / — | Standard HA actions: `more-info`, `navigate`, `url`, `call-service`, `toggle`, `none`. A per-alert `tap_action` overrides the card default. |
-| `all_clear` | — | `{ icon, text }` shown when there are no alerts. Omit to render nothing. |
+Add a dashboard card of type `custom:banner-channel`. Its only field is `entity`, set to that channel's sensor:
 
-## How rotation works
+```yaml
+type: custom:banner-channel
+entity: sensor.banner_tablets
+```
 
-Node-RED (or any automation) keeps the `alerts` list current on the sensor. The
-card holds **one** timer and round-robins the array in order, fading between
-items. There is no per-tick network traffic, the timer runs only when there is
-more than one alert, it is cleared when the card leaves the DOM, and it pauses
-while the tab/page is hidden — so a backgrounded tablet does no work.
+The sensor state is the active slide count. Rotation, colors, and the alert list come from the sensor:
 
-## Performance notes
+```json
+{
+  "rotate_interval": 10,
+  "show_badge": true,
+  "empty": "hide",
+  "all_clear": null,
+  "alerts": [
+    {
+      "id": "rule-uuid:binary_sensor.front_door_is_open",
+      "icon": "mdi:door-open",
+      "primary": "Front Door",
+      "secondary": "Open",
+      "background": "#c62828",
+      "color": "#ffffff",
+      "tap_action": {
+        "action": "more-info",
+        "entity": "binary_sensor.front_door_is_open"
+      },
+      "hold_action": { "action": "none" }
+    }
+  ]
+}
+```
 
-- Single file, **no bundled libraries** — reuses the LitElement that Home
-  Assistant's frontend already loads, and HA's built-in `<ha-icon>`.
-- **`opacity`-only** transitions; no `transform`, `box-shadow`, `filter`,
-  `backdrop-filter`, or `@keyframes`.
-- No layout reads (`getBoundingClientRect`/`offsetWidth`) → no forced reflow.
-
-## Development
-
-- `npm test` runs the pure-logic unit tests (`node:test`, no dependencies).
-- Open `test/harness.html` in a browser (or serve the repo and visit
-  `/test/harness.html`) to exercise rotation, actions, and the empty/unavailable
-  states with a mock `hass`.
+The card does not edit rules.
 
 ## Credit & license
 
-Inspired by [AlertTicker-Card](https://github.com/djdevil/AlertTicker-Card) by
-**djdevil** — this is a clean-room, lightweight reimplementation, not a fork of
-its code. MIT licensed.
+Inspired by [AlertTicker-Card](https://github.com/djdevil/AlertTicker-Card) by **djdevil**. This repository is not a fork of AlertTicker-Card. MIT licensed.

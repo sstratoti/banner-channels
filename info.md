@@ -1,19 +1,104 @@
-# Alert Ticker Lite
+# Banner Channels
 
-A tiny, fast rotating alert ticker for Home Assistant dashboards — built for
-low-power wall tablets. Reads one sensor (state = count, `alerts` attribute =
-the list) and cycles through the alerts with a simple opacity fade. No bundled
-libraries, `opacity`-only effects, well under 15 KB.
+Banner Channels is a Home Assistant integration. It decides which alerts are active. Banner Channel is the dashboard card. It draws the feed for one channel.
+
+## Install
+
+HACS custom repository: `https://github.com/sstratoti/alert-ticker-lite-card`, category **Integration**. Minimum Home Assistant **2026.10.0**.
+
+Manual install: copy `custom_components/banner_channels` into the configuration `custom_components` directory and restart Home Assistant.
+
+Card module: `/banner_channels/banner-channel-card.js?v=0.1.0`. YAML-mode Lovelace adds that URL as a module resource. Storage mode gets it from the integration.
 
 ```yaml
-type: custom:alert-ticker-lite-card
-entity: sensor.alert_ticker
-rotate_interval: 5
-tap_action: { action: more-info }
-all_clear: { icon: mdi:check-circle, text: "All clear" }
+url: /banner_channels/banner-channel-card.js?v=0.1.0
+type: module
 ```
 
-Each item in the `alerts` array: `{ icon, primary, secondary?, color?, tap_action? }`.
+## Use
 
-Inspired by [AlertTicker-Card](https://github.com/djdevil/AlertTicker-Card) by
-djdevil; clean-room lightweight reimplementation. MIT.
+Add Banner Channels once under **Settings → Devices & services**. Open the Banner Channels sidebar page.
+
+Create a channel (name, rotate interval, badge, empty behavior). Saving it creates one sensor, for example `sensor.banner_tablets`.
+
+```json
+{
+  "id": "uuid",
+  "name": "Tablets",
+  "entity_id": "sensor.banner_tablets",
+  "position": 0,
+  "rotate_interval": 10,
+  "show_badge": true,
+  "empty": "hide",
+  "all_clear": { "icon": "mdi:check-circle", "text": "All clear" }
+}
+```
+
+Create a rule tagged with one or more channels: headline, subtext, icon, background and text colors, match, optional time window, optional second condition, tap and hold.
+
+```json
+{
+  "id": "uuid",
+  "position": 0,
+  "channels": ["channel-uuid"],
+  "headline": "Front Door",
+  "subtext": "Open",
+  "subtext_template": "",
+  "icon": "mdi:door-open",
+  "background": "#c62828",
+  "color": "#ffffff",
+  "match": {
+    "kind": "entity",
+    "entity_id": "binary_sensor.front_door_is_open",
+    "operator": "is",
+    "value": "on"
+  },
+  "when": { "from": "20:00", "to": "04:00" },
+  "also": {
+    "entity_id": "sensor.litter_robot_right_status_code",
+    "operator": "is_not",
+    "value": "ccp"
+  },
+  "tap_action": { "action": "more-info" },
+  "hold_action": { "action": "none" }
+}
+```
+
+Add a dashboard card of type `custom:banner-channel`. Its only field is `entity`:
+
+```yaml
+type: custom:banner-channel
+entity: sensor.banner_tablets
+```
+
+The sensor state is the active slide count. Rotation, colors, and the alert list come from the sensor:
+
+```json
+{
+  "rotate_interval": 10,
+  "show_badge": true,
+  "empty": "hide",
+  "all_clear": null,
+  "alerts": [
+    {
+      "id": "rule-uuid:binary_sensor.front_door_is_open",
+      "icon": "mdi:door-open",
+      "primary": "Front Door",
+      "secondary": "Open",
+      "background": "#c62828",
+      "color": "#ffffff",
+      "tap_action": {
+        "action": "more-info",
+        "entity": "binary_sensor.front_door_is_open"
+      },
+      "hold_action": { "action": "none" }
+    }
+  ]
+}
+```
+
+The card does not edit rules.
+
+## Credit & license
+
+Inspired by [AlertTicker-Card](https://github.com/djdevil/AlertTicker-Card) by **djdevil**. This repository is not a fork of AlertTicker-Card. MIT licensed.

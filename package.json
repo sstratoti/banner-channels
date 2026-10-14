@@ -1,7 +1,7 @@
 {
-  "name": "alert-ticker-lite-card",
+  "name": "banner-channels",
   "version": "0.1.0",
-  "description": "Lightweight rotating alert ticker card for Home Assistant, fed by a Node-RED sensor.",
+  "description": "Banner Channels for Home Assistant",
   "type": "module",
   "scripts": {
     "test": "node --test"

@@ -467,7 +467,7 @@ git commit -m "test: cover banner runtime updates"
 - Consumes: `BannerRuntime.snapshot`, `async_update_record`, `async_delete_record`, `async_reorder`, `validate_channel`, `validate_rule`, `slugify`
 - Produces: websocket commands `banner_channels/list`, `banner_channels/save`, `banner_channels/delete`, `banner_channels/reorder`. Each requires admin. `save` takes `kind` (`channel` or `rule`) and `record`. Invalid records return `{ "errors": { field: message } }` and do not write. `delete` takes `kind` and `id`. `reorder` takes `kind` and `ids` in display order.
 
-- [ ] **Step 1: Register static files, the card resource, and the panel**
+- [x] **Step 1: Register static files, the card resource, and the panel** `ff0fd79`
 
 In `async_setup`, register `StaticPathConfig("/banner_channels", frontend_dir, cache_headers=False)`. Register websocket commands here too.
 
@@ -487,7 +487,7 @@ await panel_custom.async_register_panel(
 
 Card resource URL is `/banner_channels/banner-channel-card.js?v=0.1.0`. Before checking for an existing resource, `await resources.async_get_info()` so storage is loaded. `async_items()` on an unloaded collection is empty and would register a duplicate on every boot, and the second import throws in `customElements.define`. If `resources` is a `ResourceYAMLCollection`, do not call `async_create_item`. Log the module URL and tell the user to add it in YAML. If a storage resource already points at the same path with a different `v`, update that item instead of creating another.
 
-- [ ] **Step 2: Add the websocket commands**
+- [x] **Step 2: Add the websocket commands** `ff0fd79`
 
 Register `banner_channels/list`, `banner_channels/save`, `banner_channels/delete`, and `banner_channels/reorder`. Each uses `@websocket_api.require_admin` and `@websocket_api.async_response`.
 
@@ -499,7 +499,7 @@ Register `banner_channels/list`, `banner_channels/save`, `banner_channels/delete
 
 Show server errors on these fields: `name`, `entity_id` (under the channel name), `rotate_interval`, `empty`, `all_clear_text`, `all_clear_icon`, `headline`, `subtext`, `icon`, `background`, `color`, `match_operator`, `match_entity`, `match_pattern`, `match_value`, `when`, `also_entity`, `also_operator`, `also_value`, `tap_action`, `hold_action`, `subtext_template`. `subtext_template` is checked with `Template(template, hass).ensure_valid()` when the string is non-empty.
 
-- [ ] **Step 3: Write the panel**
+- [x] **Step 3: Write the panel** `ff0fd79`
 
 Create `custom_components/banner_channels/frontend/banner-channels-panel.js` as a vanilla custom element `banner-channels-panel`. Home Assistant sets `hass` and `panel`. Do not import Lit.
 
@@ -515,7 +515,7 @@ The rule form shows a preview banner first: a flex row with an `<ha-icon>`, a he
 
 Steve performs this step after installing the integration. Do not restart Home Assistant or drive the live dashboard. The landing page shows the sentence that a channel is one banner and a rule is one alert. Create a Tablets channel that hides when empty and rotates every 10 seconds. The channel form shows the help line under Rotate interval and under When empty. Create a Front Door rule tagged with that channel, red background, white text, entity comparison `is` / `on`. Add the Banner Channel card to a dashboard and pick `sensor.banner_tablets`. Expected: with the door shut the card is gone; with the door open the red banner shows and a tap opens more-info. Turn the door off and on with no other change and the sensor's `last_updated` stays put while an unrelated entity changes. Add a second channel, tag the same rule with both, and confirm both sensors show the slide.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit** `ff0fd79`
 
 ```bash
 git add custom_components/banner_channels/__init__.py \

@@ -108,3 +108,72 @@ def test_rule_rejects_bad_url_and_non_numeric_threshold():
     )
     assert "match_value" in errors
     assert "tap_action" in errors
+
+
+def test_rule_rejects_non_finite_numeric_match_values():
+    def errors_for(value):
+        return validate_rule(
+            {
+                "headline": "Low battery",
+                "icon": "mdi:battery",
+                "match": {
+                    "kind": "filter",
+                    "pattern": "sensor.*battery*",
+                    "operator": "below",
+                    "value": value,
+                },
+            }
+        )
+
+    assert "match_value" in errors_for("inf")
+    assert "match_value" in errors_for("nan")
+    assert "match_value" not in errors_for("5")
+
+
+def test_rule_rejects_bad_also_numeric_values():
+    def errors_for(value):
+        return validate_rule(
+            {
+                "headline": "Door",
+                "icon": "mdi:door",
+                "match": {
+                    "kind": "entity",
+                    "entity_id": "binary_sensor.front_door",
+                    "operator": "is",
+                    "value": "on",
+                },
+                "also": {
+                    "entity_id": "sensor.battery",
+                    "operator": "below",
+                    "value": value,
+                },
+            }
+        )
+
+    assert "also_value" in errors_for("inf")
+    assert "also_value" not in errors_for("5")
+    assert "also_value" in errors_for("low")
+
+
+def test_rule_checks_service_data_when_the_service_name_is_valid():
+    def errors_for(data):
+        return validate_rule(
+            {
+                "headline": "Door",
+                "icon": "mdi:door",
+                "match": {
+                    "kind": "entity",
+                    "entity_id": "binary_sensor.front_door",
+                    "operator": "is",
+                    "value": "on",
+                },
+                "tap_action": {
+                    "action": "call-service",
+                    "service": "light.turn_on",
+                    "data": data,
+                },
+            }
+        )
+
+    assert "tap_action" in errors_for("nope")
+    assert "tap_action" not in errors_for({"brightness": 10})

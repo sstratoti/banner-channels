@@ -539,7 +539,7 @@ git commit -m "feat: edit banner channels from the sidebar"
 - Consumes: the finished integration and card
 - Produces: HACS integration metadata and a README that matches the spec
 
-- [ ] **Step 1: Replace the user-facing docs**
+- [x] **Step 1: Replace the user-facing docs** `202f92a`
 
 Set `hacs.json` to:
 
@@ -563,13 +563,13 @@ Set `package.json` `name` to `banner-channels` and `description` to `Banner Chan
 
 Delete `examples/node-red-sensor.md`.
 
-- [ ] **Step 2: Run both test suites**
+- [x] **Step 2: Run both test suites** `202f92a`
 
 Run: `python -m pytest -q && node --test`
 
 Expected: pytest reports the evaluate and validate tests passed, and node reports the banner-core tests passed with `# fail 0`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit** `202f92a`
 
 ```bash
 git add hacs.json README.md info.md package.json

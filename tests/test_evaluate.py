@@ -366,6 +366,8 @@ def test_signature_changes_for_each_signed_field():
     assert changed_feed(show_badge=False) != original
     assert changed_feed(empty="hide") != original
     assert changed_feed(all_clear={"icon": "mdi:check-all", "text": "All clear"}) != original
+    assert changed_feed(all_clear={"icon": "mdi:check", "text": "Nothing to show"}) != original
+    assert changed_alert("id", "door:other") != original
     assert changed_alert("icon", "mdi:door") != original
     assert changed_alert("primary", "Side Door") != original
     assert changed_alert("secondary", "Closed") != original

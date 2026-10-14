@@ -168,7 +168,7 @@ git commit -m "feat: compare alert operators and time windows"
 
 Feed dict keys: `rotate_interval`, `show_badge`, `empty`, `all_clear`, `alerts`. Each alert has `id`, `icon`, `primary`, `secondary`, optional `background`, optional `color`, `tap_action`, `hold_action`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test** `4433dfb`
 
 Append to `tests/test_evaluate.py`:
 
@@ -415,13 +415,13 @@ def test_filter_skips_the_channels_own_sensors():
     assert "sensor.lock_battery" in watched
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails** `4433dfb`
 
 Run: `python -m pytest tests/test_evaluate.py::test_entity_match_builds_one_slide_and_defaults_tap -q`
 
 Expected: FAIL with `ImportError: cannot import name 'Snap'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation** `78ead71`
 
 Replace `custom_components/banner_channels/evaluate.py` with:
 
@@ -665,18 +665,20 @@ def watched_entity_ids(
     return watched
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes** `446ac29`
 
 Run: `python -m pytest tests/test_evaluate.py -q`
 
-Expected: `12 passed`
+Expected: `12 passed` on `78ead71`. Follow-up commits `2a222e0` and `446ac29` add regression locks. Final count: `17 passed`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit** `78ead71`
 
 ```bash
 git add custom_components/banner_channels/evaluate.py tests/test_evaluate.py
 git commit -m "feat: evaluate channel rules into banner feeds"
 ```
+
+Follow-up test commits: `2a222e0`, `446ac29`.
 
 ---
 

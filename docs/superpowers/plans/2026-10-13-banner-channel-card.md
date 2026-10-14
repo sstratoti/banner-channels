@@ -189,7 +189,7 @@ Follow-up test commit: `8309f48`.
 - Consumes: `validateConfig`, `feedSignature`, `nextIndex`, `viewMode`, `showBadge` from `./banner-core.js`
 - Produces: custom element `banner-channel-card`, registered on `window.customCards` as type `custom:banner-channel`, name `Banner Channel`
 
-- [ ] **Step 1: Write the card**
+- [x] **Step 1: Write the card** `9cf226b`
 
 Create `custom_components/banner_channels/frontend/banner-channel-card.js`:
 
@@ -431,11 +431,11 @@ window.customCards.push({
 });
 ```
 
-- [ ] **Step 2: Point the harness at the new card**
+- [x] **Step 2: Point the harness at the new card** `65e1380`
 
 Replace `test/harness.html` so the module under test is `../custom_components/banner_channels/frontend/banner-channel-card.js`. `setConfig` receives only `{ entity: "sensor.banner_tablets" }`. The fake state object puts rotation, colors, alerts, `empty`, and `show_badge` on `attributes`. Buttons: three alerts, one alert, zero with `empty: "hide"`, zero with `empty: "all_clear"`, and `state: "unavailable"`. Keep the Lit prototype assignment and the `ha-icon` stub already in the harness. Log `hass-more-info` events.
 
-- [ ] **Step 3: Remove the lite card files**
+- [x] **Step 3: Remove the lite card files** `65e1380`
 
 ```bash
 rm -f alert-ticker-lite-card.js lib/ticker-core.js lib/actions.js test/ticker-core.test.mjs
@@ -452,17 +452,17 @@ In the same commit, replace `hacs.json` so it no longer names the deleted Lovela
 }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests** `65e1380`
 
 Run: `node --test`
 
 Expected: `# fail 0` and the five `banner-core` tests passing. `ticker-core` tests are gone.
 
-- [ ] **Step 5: Check the harness**
+- [x] **Step 5: Check the harness** `65e1380`
 
 Open `test/harness.html` through a local static server. Confirm the three-alert fixture fades between headlines, the count badge shows `3`, a color is visible on the first slide, zero alerts with `hide` removes the card, all-clear shows its text, and unavailable shows `Banner unavailable`. A click logs `more-info`. A drag of more than 10 pixels does not.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit** `65e1380`
 
 ```bash
 git add custom_components/banner_channels/frontend/banner-channel-card.js test/harness.html hacs.json

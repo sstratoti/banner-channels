@@ -693,7 +693,7 @@ Follow-up test commits: `2a222e0`, `446ac29`.
 - Consumes: nothing from evaluate
 - Produces: `slugify(name: str) -> str`, `validate_channel(data: dict, taken_entity_ids: set[str]) -> dict[str, str]`, `validate_rule(data: dict) -> dict[str, str]`. An empty dict means valid. Error values are short human-readable strings.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test** `817a1f9`
 
 Create `tests/test_validate.py`:
 
@@ -810,13 +810,13 @@ def test_rule_rejects_bad_url_and_non_numeric_threshold():
     assert "tap_action" in errors
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails** `817a1f9`
 
 Run: `python -m pytest tests/test_validate.py -q`
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'validate'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation** `d2cc117`
 
 Create `custom_components/banner_channels/validate.py`:
 
@@ -948,15 +948,17 @@ def validate_rule(data: dict) -> dict[str, str]:
     return errors
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes** `aca8694`
 
 Run: `python -m pytest tests/test_validate.py tests/test_evaluate.py -q`
 
-Expected: `19 passed`
+Expected: `19 passed` assumed 12 evaluate tests. Actual after `d2cc117`: 24. After regression commit `aca8694`: 27 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit** `d2cc117`
 
 ```bash
 git add custom_components/banner_channels/validate.py tests/test_validate.py
 git commit -m "feat: validate banner channels and rules"
 ```
+
+Follow-up test commit: `aca8694`.

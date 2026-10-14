@@ -58,6 +58,26 @@ def _open_door(hass, **kwargs):
     )
 
 
+def _battery_rule(channels):
+    return {
+        "id": "battery",
+        "position": 0,
+        "channels": channels,
+        "headline": "Low battery",
+        "subtext": "",
+        "subtext_template": "",
+        "icon": "mdi:battery-alert",
+        "match": {
+            "kind": "filter",
+            "pattern": "sensor.*battery*",
+            "operator": "below",
+            "value": "20",
+        },
+        "tap_action": {"action": "more-info"},
+        "hold_action": {"action": "none"},
+    }
+
+
 @pytest.mark.asyncio
 async def test_runtime_writes_watched_feeds_and_removes_deleted_channels(
     hass, enable_custom_integrations
@@ -115,3 +135,29 @@ async def test_runtime_writes_watched_feeds_and_removes_deleted_channels(
     await runtime.async_delete_record("channel", "tablets")
     await hass.async_block_till_done()
     assert registry.async_get("sensor.banner_tablets") is None
+
+
+@pytest.mark.asyncio
+async def test_filter_match_appearing_after_startup_updates_channel(
+    hass, enable_custom_integrations
+):
+    entry = MockConfigEntry(domain=DOMAIN, data={})
+    entry.add_to_hass(hass)
+    with patch("homeassistant.components.frontend.async_setup", _frontend_ready):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    runtime = hass.data[DOMAIN][entry.entry_id]
+    await runtime.async_update_record(
+        "channel", _channel("tablets", "Tablets", "sensor.banner_tablets", 0)
+    )
+    await runtime.async_update_record("rule", _battery_rule(["tablets"]))
+    await hass.async_block_till_done()
+
+    assert hass.states.get("sensor.lock_battery") is None
+    assert hass.states.get("sensor.banner_tablets").state == "0"
+
+    hass.states.async_set("sensor.lock_battery", "10", {"friendly_name": "Lock"})
+    await hass.async_block_till_done()
+
+    assert hass.states.get("sensor.banner_tablets").state == "1"

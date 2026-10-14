@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from fnmatch import fnmatch
 import logging
 
+from homeassistant.const import EVENT_STATE_CHANGED
 from homeassistant.core import callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import (
@@ -34,11 +36,36 @@ class BannerRuntime:
         self._unsub_state = None
         self._unsub_time = None
         self._unsub_registry = None
+        self._unsub_filter = None
         self._logged_template_errors = set()
 
     @callback
     def _schedule_refresh(self, _event):
         self.hass.async_create_task(self.async_refresh())
+
+    @callback
+    def _on_filter_state(self, event):
+        entity_id = event.data.get("entity_id")
+        if entity_id in self._watched:
+            return
+        if event.data.get("new_state") is None:
+            return
+        own = {
+            channel["entity_id"]
+            for channel in self.store.data["channels"]
+            if channel.get("entity_id")
+        }
+        if entity_id in own:
+            return
+        for rule in self.store.data["rules"]:
+            match = rule.get("match") or {}
+            if match.get("kind") != "filter":
+                continue
+            pattern = match.get("pattern") or ""
+            exclude = match.get("exclude") or []
+            if pattern and entity_id not in exclude and fnmatch(entity_id, pattern):
+                self._schedule_refresh(event)
+                return
 
     def snapshot(self):
         return {"channels": list(self.store.data["channels"]), "rules": list(self.store.data["rules"])}
@@ -133,7 +160,12 @@ class BannerRuntime:
         )
 
     async def async_stop(self):
-        for unsub in (self._unsub_state, self._unsub_time, self._unsub_registry):
+        for unsub in (
+            self._unsub_state,
+            self._unsub_time,
+            self._unsub_registry,
+            self._unsub_filter,
+        ):
             if unsub:
                 unsub()
 
@@ -189,3 +221,15 @@ class BannerRuntime:
         elif not wants_timer and self._unsub_time:
             self._unsub_time()
             self._unsub_time = None
+        wants_filter = any(
+            (rule.get("match") or {}).get("kind") == "filter"
+            and (rule.get("match") or {}).get("pattern")
+            for rule in rules
+        )
+        if wants_filter and self._unsub_filter is None:
+            self._unsub_filter = self.hass.bus.async_listen(
+                EVENT_STATE_CHANGED, self._on_filter_state
+            )
+        elif not wants_filter and self._unsub_filter:
+            self._unsub_filter()
+            self._unsub_filter = None

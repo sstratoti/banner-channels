@@ -235,3 +235,13 @@ def watched_entity_ids(
         if also and also.get("entity_id"):
             watched.add(also["entity_id"])
     return watched
+
+
+def changed_feeds(previous: dict[str, str], feeds: dict[str, dict]) -> tuple[dict[str, dict], dict[str, str]]:
+    signatures = {channel_id: feed_signature(feed) for channel_id, feed in feeds.items()}
+    changed = {
+        channel_id: feeds[channel_id]
+        for channel_id, signature in signatures.items()
+        if previous.get(channel_id) != signature
+    }
+    return changed, signatures

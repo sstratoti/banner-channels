@@ -45,9 +45,9 @@ Create a channel: name, rotate interval, badge, and empty behavior. Saving it cr
 
 `rotate_interval` is seconds between slides. `0` keeps the first slide on screen. `show_badge` shows which slide is on screen, such as `2/9`, at the top right, and hides that counter when only one alert is active. `empty` is `hide` or `all_clear`. `severity_styles` sets a default icon and color for Information, Warning, and Problem. A rule's own icon or text color replaces those defaults.
 
-Create a rule and tag it with one or more channels. A rule with no channel tags produces no slides. Fields: headline, subtext, icon, background and text colors, channels, match, an optional time window, an optional second condition, and tap and hold. In the headline or the subtext, `{name}` and `{state}` are replaced for each match. Text that contains `{{` or `{%` is a Jinja template, with variables `state`, `entity_id`, `name`, and `rule_id`. The icon, background, and text color accept the same templates. A rendered icon must be an `mdi:` name. A rendered color must look like `#c62828`.
+Create a rule and tag it with one or more channels. A rule with no channel tags produces no slides. Fields: headline, subtext, icon, background and text colors, channels, match, an optional time window, additional AND/OR conditions, visibility, secondary positioning, and tap/hold/double-tap actions. In the headline or the subtext, `{name}` and `{state}` are replaced for each match. Text that contains `{{` or `{%` is a Jinja template, with variables `state`, `entity_id`, `name`, and `rule_id`. The icon, background, and text color accept the same templates. A rendered icon must be an `mdi:` name. A rendered color must look like `#c62828`.
 
-The sidebar uses Home Assistant's native entity, service, and icon pickers. Entity pickers also appear in the second condition and in tap/hold actions, including service targets. Leave a Toggle or More-info entity blank to use the matched entity. For an alert icon template, enable **Use template**; existing icon templates open in that mode automatically. Channel all-clear and severity icons use the icon picker too. Text inputs remain available if the native controls cannot load.
+The sidebar uses Home Assistant's native entity, service, and icon pickers. Entity pickers also appear in additional conditions and in all three action editors, including service targets. Leave a Toggle or More-info entity blank to use the matched entity. For an alert icon template, enable **Use template**; existing icon templates open in that mode automatically. Channel all-clear and severity icons use the icon picker too. Text inputs remain available if the native controls cannot load.
 
 ```json
 {
@@ -66,15 +66,25 @@ The sidebar uses Home Assistant's native entity, service, and icon pickers. Enti
     "value": "on"
   },
   "when": { "from": "20:00", "to": "04:00" },
-  "also": {
+  "conditions_logic": "and",
+  "conditions": [{
     "entity_id": "sensor.litter_robot_right_status_code",
     "operator": "is_not",
     "value": "ccp"
-  },
+  }],
+  "secondary_position": "right",
+  "visibility": { "mode": "users", "user_ids": ["home-assistant-user-id"] },
   "tap_action": { "action": "more-info" },
-  "hold_action": { "action": "none" }
+  "hold_action": { "action": "none" },
+  "double_tap_action": { "action": "toggle", "entity": "light.porch" }
 }
 ```
+
+A condition compares the entity state unless its optional `attribute` names a direct entity attribute (for example `current_temperature`). Attribute-only updates are evaluated too. Missing/null attributes never match. Text comparisons use lowercase `true`/`false` for boolean attributes. `{state}` and the Jinja `state` variable still mean the entity's actual state.
+
+The primary match is always required. `conditions_logic: and` requires every additional condition; `or` requires at least one. With no additional conditions, only the primary match and optional time window apply. Existing `also` rules open as one additional AND condition and are saved in the new format.
+
+**Secondary value position** places the existing subtext below or to the right of the headline; severity stays above. **Visible to** offers Everyone, Admins, Non-admins, or Specific users. Specific users shows a selectable list of active Home Assistant users by name and stores their IDs, so renaming a user preserves the selection. This filters dashboard display only: the shared channel sensor still contains all active alerts.
 
 On a dashboard, choose Add card and pick Banner Channel. The editor asks for the channel sensor. The same card in YAML is:
 

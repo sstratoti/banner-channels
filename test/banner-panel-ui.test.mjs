@@ -235,3 +235,76 @@ test("attribute selection follows its entity and preserves edits and indexed err
   assert.equal(record.match.attribute, "ready");
   assert.equal(record.headline, "Keep");
 });
+
+test("specific users displays names and saves stable selected IDs", async (t) => {
+  const { panel, hass, window, save } = await editor(t);
+  const call = hass.callWS;
+  hass.callWS = async (m) => m.type === "config/auth/list" ? [
+    {id: "one", name: "Sam", is_active: true}, {id: "two", name: "Sam", is_active: true},
+    {id: "inactive", name: "Old", is_active: false}, {id: "system", name: "System", is_active: true, system_generated: true},
+  ] : call(m);
+  panel._openEditor("rule", {headline: "Users", visibility: {mode: "users", user_ids: ["one"]}});
+  await panel._loadUsers();
+  const choices = panel.shadowRoot.querySelectorAll('[data-user-id]');
+  assert.equal(choices.length, 2);
+  assert.notEqual(choices[0].parentElement.textContent, choices[1].parentElement.textContent);
+  assert.equal(choices[0].checked, true);
+  choices[1].checked = true;
+  choices[1].dispatchEvent(new window.Event("change"));
+  const record = await save();
+  assert.deepEqual(record.visibility, {mode: "users", user_ids: ["one", "two"]});
+  panel._users[0].name = "Renamed";
+  panel._openEditor("rule", record);
+  assert.equal(panel.shadowRoot.querySelector('[data-user-id="one"]').checked, true);
+  assert.match(panel.shadowRoot.textContent, /Renamed/);
+});
+
+test("user loading retries without changing visibility or another draft", async (t) => {
+  const { panel, hass, window } = await editor(t);
+  let finish;
+  let tries = 0;
+  const call = hass.callWS;
+  hass.callWS = (m) => m.type !== "config/auth/list" ? call(m) : ++tries === 1
+    ? Promise.reject(new Error("Offline")) : new Promise((r) => { finish = r; });
+  panel._openEditor("rule", {headline: "First", visibility: {mode: "users", user_ids: ["one"]}});
+  await panel._loadUsers();
+  assert.match(panel.shadowRoot.textContent, /Offline/);
+  [...panel.shadowRoot.querySelectorAll("button")].find((n) => n.textContent === "Retry users").click();
+  panel._openEditor("rule", {headline: "Second", visibility: {mode: "users", user_ids: ["two"]}});
+  const pending = panel._loadUsers();
+  finish([{id: "two", name: "Second user", is_active: true}]);
+  await pending;
+  assert.equal(panel._draft.headline, "Second");
+  assert.equal(panel.shadowRoot.querySelector('[data-user-id="two"]').checked, true);
+  assert.deepEqual(panel._draft.visibility.user_ids, ["two"]);
+});
+
+test("removed users remain selectable for removal and empty selection blocks save", async (t) => {
+  const { panel, hass, window, save } = await editor(t);
+  hass.callWS = async (m) => m.type === "config/auth/list" ? [] : {channels: [], rules: []};
+  panel._openEditor("rule", {headline: "Gone", visibility: {mode: "users", user_ids: ["deleted"]}});
+  await panel._loadUsers();
+  const choice = panel.shadowRoot.querySelector('[data-user-id="deleted"]');
+  assert.match(choice.parentElement.textContent, /Unavailable/);
+  choice.checked = false;
+  choice.dispatchEvent(new window.Event("change"));
+  assert.equal(await save(), undefined);
+  assert.match(panel.shadowRoot.textContent, /Select at least one user/);
+});
+
+test("secondary position and double tap round trip and preview", async (t) => {
+  const { panel, change, selectors, save } = await editor(t);
+  panel._openEditor("rule", {headline: "Door", subtext: "Open", secondary_position: "right", double_tap_action: {action: "more-info"}});
+  assert.ok(panel.shadowRoot.querySelector(".preview.secondary-right"));
+  assert.equal(selectors("entity").length, 2);
+  change(selectors("entity")[1], "sensor.extra");
+  const record = await save();
+  assert.equal(record.secondary_position, "right");
+  assert.deepEqual(record.double_tap_action, {action: "more-info", entity: "sensor.extra"});
+  panel._openEditor("rule", {...record, double_tap_action: {action: "call-service", service: "light.turn_on", data: {}}});
+  const data = [...panel.shadowRoot.querySelectorAll("textarea")].find((n) => n.placeholder === "Optional JSON object");
+  data.value = "[";
+  data.dispatchEvent(new window.Event("input"));
+  assert.equal(await save(), record);
+  assert.match(panel.shadowRoot.textContent, /JSON object/);
+});

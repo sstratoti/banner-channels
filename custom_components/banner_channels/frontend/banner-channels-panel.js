@@ -34,6 +34,7 @@ export const HELP = {
     also: "The primary match is always required. AND requires all additional conditions; OR requires at least one.",
     tap: "What a click does. Blank opens more-info for the matched entity.",
     hold: "What a long press does. Blank does nothing.",
+    double_tap: "What a double tap does. Blank does nothing. When configured, single tap waits briefly.",
   },
 };
 
@@ -141,6 +142,9 @@ export function ruleRecord(draft) {
   const errors = {};
   const tap = actionRecord(draft.tap_action);
   const hold = actionRecord(draft.hold_action);
+  const double = actionRecord(draft.double_tap_action);
+  if (double && double.error) errors.double_tap_action = double.error;
+  if (draft.visibility?.mode === "users" && !draft.visibility.user_ids?.length) errors.visibility = "Select at least one user.";
   if (tap && tap.error) errors.tap_action = tap.error;
   if (hold && hold.error) errors.hold_action = hold.error;
   if (Object.keys(errors).length) return { errors };
@@ -172,6 +176,10 @@ export function ruleRecord(draft) {
     severity: draft.severity || "",
     channels: draft.channels || [],
     match: storedMatch,
+    secondary_position: draft.secondary_position || "below",
+    visibility: draft.visibility?.mode === "users"
+      ? { mode: "users", user_ids: [...new Set(draft.visibility.user_ids)] }
+      : { mode: draft.visibility?.mode || "all" },
   };
   if (draft.id) record.id = draft.id;
   if (draft.whenEnabled) record.when = { from: draft.whenFrom || "", to: draft.whenTo || "" };
@@ -184,6 +192,7 @@ export function ruleRecord(draft) {
   record.conditions_logic = draft.conditions_logic || "and";
   if (tap && tap.value) record.tap_action = tap.value;
   if (hold && hold.value) record.hold_action = hold.value;
+  if (double && double.value) record.double_tap_action = double.value;
   return { record };
 }
 
@@ -302,6 +311,8 @@ function ruleDraft(record) {
     return {
       headline: "",
       subtext: "",
+      secondary_position: "below",
+      visibility: { mode: "all" },
       icon: "",
       background: "",
       color: "",
@@ -315,6 +326,7 @@ function ruleDraft(record) {
       conditions_logic: "and",
       tap_action: blankAction(),
       hold_action: blankAction(),
+      double_tap_action: blankAction(),
     };
   }
   const match = record.match || {};
@@ -322,6 +334,8 @@ function ruleDraft(record) {
     id: record.id,
     headline: record.headline || "",
     subtext: record.subtext || "",
+    secondary_position: record.secondary_position || "below",
+    visibility: { mode: record.visibility?.mode || "all", user_ids: [...(record.visibility?.user_ids || [])] },
     icon: record.icon || "",
     background: record.background || "",
     color: record.color || "",
@@ -345,6 +359,7 @@ function ruleDraft(record) {
     conditions_logic: record.conditions_logic || "and",
     tap_action: actionDraft(record.tap_action),
     hold_action: actionDraft(record.hold_action),
+    double_tap_action: actionDraft(record.double_tap_action),
   };
 }
 
@@ -385,6 +400,9 @@ textarea.compact { min-height: 40px; }
 .preview .severity, .preview .headline, .preview .subtext { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .preview .severity { font-size: 10px; font-weight: 700; line-height: 1.3; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 1px; }
 .preview .headline { font-size: 16px; font-weight: 600; line-height: 1.3; }
+.preview.secondary-right .copy { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto); align-items: center; gap: 0 8px; flex: 1; }
+.preview.secondary-right .severity { grid-column: 1 / -1; }
+.preview.secondary-right .subtext { max-width: 100%; }
 .preview .subtext { font-size: 13px; line-height: 1.35; opacity: 0.75; }
 .back { margin-bottom: 8px; }
 `;
@@ -402,6 +420,9 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       this._started = false;
       this._loaded = false;
       this._loadError = "";
+      this._users = null;
+      this._usersError = "";
+      this._usersPromise = null;
     }
 
     set hass(value) {
@@ -699,6 +720,9 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       const subtext = textbox(draft.subtext);
       subtext.addEventListener("input", () => { draft.subtext = subtext.value; this._syncPreview(); });
       page.append(field("Subtext", subtext, HELP.rule.subtext, [errors.subtext]));
+      const position = select([["below", "Below headline"], ["right", "Right of headline"]], draft.secondary_position);
+      position.addEventListener("change", () => { draft.secondary_position = position.value; this._syncPreview(); });
+      page.append(field("Secondary value position", position, "", [errors.secondary_position]));
 
       const icon = this._iconControl(draft.icon, "Icon", "mdi:door-open", (value) => { draft.icon = value; this._syncPreview(); }, true);
       page.append(field("Icon", icon, HELP.rule.icon, [errors.icon]));
@@ -709,8 +733,10 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       page.append(this._matchFields(draft, errors));
       page.append(this._windowFields(draft, errors));
       page.append(this._conditionsFields(draft, errors));
+      page.append(this._visibilityFields(draft, errors));
       page.append(this._actionFields("Tap", draft.tap_action, HELP.rule.tap, errors.tap_action));
       page.append(this._actionFields("Hold", draft.hold_action, HELP.rule.hold, errors.hold_action));
+      page.append(this._actionFields("Double tap", draft.double_tap_action, HELP.rule.double_tap, errors.double_tap_action));
 
       this._saveBar(
         page,
@@ -728,7 +754,7 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
     }
 
     _preview(draft) {
-      const row = el("div", "preview");
+      const row = el("div", `preview${draft.secondary_position === "right" ? " secondary-right" : ""}`);
       const icon = document.createElement("ha-icon");
       const copy = el("div", "copy");
       const background = displayValue(draft.background);
@@ -955,6 +981,63 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       });
       wrap.append(add);
       return field("Additional conditions", wrap, HELP.rule.also, [errors.conditions, errors.conditions_logic]);
+    }
+
+    _loadUsers() {
+      const draft = this._draft;
+      if (!this._usersPromise) {
+        this._usersError = "";
+        this._usersPromise = this._hass.callWS({ type: "config/auth/list" }).then((users) => {
+          this._users = users.filter((user) => user.is_active && !user.system_generated)
+            .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
+        }).catch((error) => { this._usersError = error.message || "Could not load users."; })
+          .finally(() => { this._usersPromise = null; });
+      }
+      return this._usersPromise.then(() => {
+        if (this._draft === draft && this._view === "rule" && draft.visibility.mode === "users") this._render();
+      });
+    }
+
+    _visibilityFields(draft, errors) {
+      const wrap = el("div");
+      const mode = select([["all", "Everyone"], ["admin", "Admins"], ["non_admin", "Non-admins"], ["users", "Specific users"]], draft.visibility.mode);
+      mode.setAttribute("aria-label", "Visible to");
+      mode.addEventListener("change", () => {
+        draft.visibility.mode = mode.value;
+        draft.visibility.user_ids ||= [];
+        this._render();
+      });
+      wrap.append(mode);
+      if (draft.visibility.mode === "users") {
+        if (this._users === null && !this._usersError) {
+          wrap.append(helpNode("Loading users…"));
+          this._loadUsers();
+        }
+        if (this._usersError) {
+          wrap.append(el("p", "error", this._usersError));
+          const retry = button("Retry users", "action");
+          retry.addEventListener("click", () => { this._loadUsers(); this._render(); });
+          wrap.append(retry);
+        }
+        const ids = draft.visibility.user_ids || [];
+        const users = [...(this._users || [])];
+        for (const id of ids) if (!users.some((user) => user.id === id)) users.push({ id, name: `Unavailable user (${id})` });
+        for (const user of users) {
+          const sameName = users.filter((other) => other.name === user.name).length > 1;
+          const label = el("label", "check");
+          const check = input("checkbox", "");
+          check.dataset.userId = user.id;
+          check.checked = ids.includes(user.id);
+          check.addEventListener("change", () => {
+            const selected = new Set(draft.visibility.user_ids || []);
+            if (check.checked) selected.add(user.id); else selected.delete(user.id);
+            draft.visibility.user_ids = [...selected];
+          });
+          label.append(check, el("span", null, `${user.name || user.id}${sameName ? ` (${user.id})` : ""}${user.is_admin ? " — Admin" : ""}`));
+          wrap.append(label);
+        }
+      }
+      return field("Visible to", wrap, "Filters dashboard display. The shared sensor still contains all active alerts.", [errors.visibility]);
     }
 
     _actionFields(label, action, help, error) {

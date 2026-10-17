@@ -13,6 +13,7 @@ from typing import Callable, NamedTuple
 class Snap(NamedTuple):
     state: str
     name: str
+    attributes: dict | None = None
 
 
 def compare(state: str, operator: str, value: str) -> bool:
@@ -132,14 +133,35 @@ def _resolve_action(action: dict | None, matched: str, kind: str) -> dict:
     return {"action": "none"}
 
 
+def _condition_value(snap: Snap, condition: dict) -> str | None:
+    attribute = condition.get("attribute")
+    raw = (snap.attributes or {}).get(attribute) if attribute else snap.state
+    if isinstance(raw, bool):
+        return "true" if raw else "false"
+    if isinstance(raw, (str, int, float)):
+        return str(raw)
+    return None
+
+
+def _condition_matches(snap: Snap | None, condition: dict) -> bool:
+    if snap is None:
+        return False
+    value = _condition_value(snap, condition)
+    return _comparable(value, condition["operator"], condition["value"]) and compare(value, condition["operator"], condition["value"])
+
+
+def _extra_conditions(rule: dict) -> list[dict]:
+    if "conditions" in rule:
+        return rule["conditions"]
+    return [rule["also"]] if rule.get("also") else []
+
+
 def _candidates(rule: dict, states: dict[str, Snap], skip: set[str]) -> list[str]:
     match = rule["match"]
     if match["kind"] == "entity":
         entity_id = match["entity_id"]
         snap = states.get(entity_id)
-        if snap is None or not _comparable(snap.state, match["operator"], match["value"]):
-            return []
-        if not compare(snap.state, match["operator"], match["value"]):
+        if not _condition_matches(snap, match):
             return []
         return [entity_id]
     exclude = set(match.get("exclude") or []) | skip
@@ -147,9 +169,7 @@ def _candidates(rule: dict, states: dict[str, Snap], skip: set[str]) -> list[str
     for entity_id, snap in states.items():
         if entity_id in exclude or not fnmatch(entity_id, match["pattern"]):
             continue
-        if not _comparable(snap.state, match["operator"], match["value"]):
-            continue
-        if compare(snap.state, match["operator"], match["value"]):
+        if _condition_matches(snap, match):
             found.append(entity_id)
     found.sort(key=lambda entity_id: ((states[entity_id].name or entity_id).casefold(), entity_id))
     return found
@@ -159,14 +179,11 @@ def _rule_active(rule: dict, states: dict[str, Snap], now: datetime) -> bool:
     when = rule.get("when")
     if when and not in_window(now, when["from"], when["to"]):
         return False
-    also = rule.get("also")
-    if not also:
+    conditions = _extra_conditions(rule)
+    if not conditions:
         return True
-    entity_id = also["entity_id"]
-    snap = states.get(entity_id)
-    if snap is None or not _comparable(snap.state, also["operator"], also["value"]):
-        return False
-    return compare(snap.state, also["operator"], also["value"])
+    results = (_condition_matches(states.get(condition["entity_id"]), condition) for condition in conditions)
+    return any(results) if rule.get("conditions_logic") == "or" else all(results)
 
 
 def _slide(rule: dict, entity_id: str, states: dict[str, Snap], render_template) -> dict:
@@ -179,6 +196,9 @@ def _slide(rule: dict, entity_id: str, states: dict[str, Snap], render_template)
         "secondary": _line(rule.get("subtext"), snap.state, name, entity_id, rule["id"], render_template),
         "tap_action": _resolve_action(rule.get("tap_action"), entity_id, "tap"),
         "hold_action": _resolve_action(rule.get("hold_action"), entity_id, "hold"),
+        "double_tap_action": _resolve_action(rule.get("double_tap_action"), entity_id, "double_tap"),
+        "secondary_position": rule.get("secondary_position", "below"),
+        "visibility": rule.get("visibility", {"mode": "all"}),
     }
     background = _styled(rule.get("background"), _HEX, snap.state, name, entity_id, rule["id"], render_template)
     color = _styled(rule.get("color"), _HEX, snap.state, name, entity_id, rule["id"], render_template)
@@ -237,6 +257,9 @@ def feed_signature(feed: dict) -> str:
                 alert.get("severity") or "",
                 alert.get("tap_action"),
                 alert.get("hold_action"),
+                alert.get("double_tap_action"),
+                alert.get("secondary_position", "below"),
+                alert.get("visibility", {"mode": "all"}),
             ]
         )
     return json.dumps(
@@ -287,9 +310,9 @@ def watched_entity_ids(
             for entity_id in states:
                 if entity_id not in exclude and fnmatch(entity_id, match["pattern"]):
                     watched.add(entity_id)
-        also = rule.get("also")
-        if also and also.get("entity_id"):
-            watched.add(also["entity_id"])
+        for condition in _extra_conditions(rule):
+            if condition.get("entity_id"):
+                watched.add(condition["entity_id"])
     return watched
 
 

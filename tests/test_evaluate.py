@@ -650,3 +650,47 @@ def test_changed_feeds_skips_an_unchanged_channel():
     changed, sigs = changed_feeds(sigs, second)
     assert list(changed) == ["phone"]
     assert set(sigs) == {"tablets", "phone"}
+
+
+def test_attribute_comparison_preserves_zero_false_and_missing_values():
+    now = datetime(2026, 10, 16, 12, tzinfo=TZ)
+    for actual, expected, operator, active in [(0, "0", "is", True), (False, "false", "is", True), (12, "10", "above", True), (None, "x", "is_not", False), ([], "x", "is_not", False), ({}, "x", "is_not", False)]:
+        rule = _door_rule(match={"kind": "entity", "entity_id": "sensor.x", "attribute": "value", "operator": operator, "value": expected}, headline="{state}")
+        feeds = evaluate([_channel()], [rule], {"sensor.x": Snap("ready", "X", {"value": actual})}, now)
+        assert bool(feeds["tablets"]["alerts"]) is active
+        if active:
+            assert feeds["tablets"]["alerts"][0]["primary"] == "ready"
+    rule["match"]["operator"] = "is_not"
+    assert evaluate([_channel()], [rule], {"sensor.x": Snap("ready", "X", {})}, now)["tablets"]["alerts"] == []
+
+
+def test_primary_is_required_with_and_or_extras():
+    from itertools import product
+    now = datetime(2026, 10, 16, 12, tzinfo=TZ)
+    for logic, primary, first, second in product(("and", "or"), (False, True), (False, True), (False, True)):
+        rule = _door_rule(conditions_logic=logic, conditions=[{"entity_id": "sensor.a", "attribute": "ready", "operator": "is", "value": "true"}, {"entity_id": "sensor.b", "operator": "is", "value": "on"}])
+        states = {"binary_sensor.front_door": Snap("on" if primary else "off", "Door"), "sensor.a": Snap("idle", "A", {"ready": first}), "sensor.b": Snap("on" if second else "off", "B")}
+        alerts = evaluate([_channel()], [rule], states, now)["tablets"]["alerts"]
+        assert bool(alerts) == (primary and ((first and second) if logic == "and" else (first or second)))
+        assert watched_entity_ids([rule], states) == {"binary_sensor.front_door", "sensor.a", "sensor.b"}
+    rule.update(conditions=[], also={"entity_id": "sensor.missing", "operator": "is", "value": "on"})
+    states["binary_sensor.front_door"] = Snap("on", "Door")
+    assert len(evaluate([_channel()], [rule], states, now)["tablets"]["alerts"]) == 1
+    rule["match"] = {"kind": "filter", "pattern": "sensor.*", "attribute": "ready", "operator": "is", "value": "true"}
+    states["sensor.a"] = Snap("idle", "A", {"ready": True})
+    assert len(evaluate([_channel()], [rule], states, now)["tablets"]["alerts"]) == 1
+
+
+def test_feed_metadata_and_signatures_include_new_options():
+    now = datetime(2026, 10, 16, 12, tzinfo=TZ)
+    states = {"binary_sensor.front_door": Snap("on", "Door")}
+    rule = _door_rule(secondary_position="right", visibility={"mode": "users", "user_ids": ["one"]}, double_tap_action={"action": "toggle"})
+    feed = evaluate([_channel()], [rule], states, now)["tablets"]
+    slide = feed["alerts"][0]
+    assert slide["secondary_position"] == "right"
+    assert slide["visibility"] == {"mode": "users", "user_ids": ["one"]}
+    assert slide["double_tap_action"] == {"action": "toggle", "entity": "binary_sensor.front_door"}
+    for key, value in [("secondary_position", "below"), ("visibility", {"mode": "all"}), ("double_tap_action", {"action": "none"})]:
+        changed = copy.deepcopy(feed)
+        changed["alerts"][0][key] = value
+        assert feed_signature(changed) != feed_signature(feed)

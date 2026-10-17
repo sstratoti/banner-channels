@@ -159,3 +159,30 @@ async def test_filter_match_appearing_after_startup_updates_channel(
     await hass.async_block_till_done()
 
     assert hass.states.get("sensor.banner_tablets").state == "1"
+
+
+@pytest.mark.asyncio
+async def test_attribute_only_updates_and_additional_entities_refresh_feed(hass, enable_custom_integrations):
+    entry = MockConfigEntry(domain=DOMAIN, data={})
+    entry.add_to_hass(hass)
+    with patch("homeassistant.components.frontend.async_setup", _frontend_ready):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    runtime = hass.data[DOMAIN][entry.entry_id]
+    await runtime.async_update_record("channel", _channel("tablets", "Tablets", "sensor.banner_tablets", 0))
+    rule = _door_rule(["tablets"])
+    rule["match"]["attribute"] = "open"
+    rule["match"]["value"] = "true"
+    rule["conditions"] = [{"entity_id": "sensor.a", "operator": "is", "value": "on"}, {"entity_id": "sensor.b", "operator": "is", "value": "on"}]
+    for eid in ("sensor.a", "sensor.b"):
+        hass.states.async_set(eid, "on")
+    hass.states.async_set("binary_sensor.front_door", "idle", {"open": False})
+    await runtime.async_update_record("rule", rule)
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.banner_tablets").state == "0"
+    hass.states.async_set("binary_sensor.front_door", "idle", {"open": True})
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.banner_tablets").state == "1"
+    hass.states.async_set("sensor.b", "off")
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.banner_tablets").state == "0"

@@ -172,7 +172,7 @@ class BannerRuntime:
     def _snapshot_states(self):
         states = {}
         for state in self.hass.states.async_all():
-            states[state.entity_id] = Snap(state.state, state.attributes.get("friendly_name") or "")
+            states[state.entity_id] = Snap(state.state, state.attributes.get("friendly_name") or "", state.attributes)
         return states
 
     def _render(self, template, variables):

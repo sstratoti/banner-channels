@@ -225,11 +225,18 @@ class BannerChannelCard extends LitElement {
 
   static get styles() {
     return css`
-      ha-card { overflow: hidden; }
+      :host { display: block; height: 100%; }
+      ha-card {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        overflow: hidden;
+      }
       .row {
         position: relative;
         display: flex; align-items: center;
         gap: var(--banner-gap, 12px);
+        flex: 1 1 auto;
         min-height: var(--banner-height, 80px);
         padding: 8px 16px;
         box-sizing: border-box;

@@ -67,6 +67,7 @@ export function moveItem(list, from, to) {
 
 function comparisonValue(operator, raw) {
   if (!NUMERIC.has(operator)) return raw == null ? "" : String(raw);
+  if (raw == null || String(raw).trim() === "") return raw ?? "";
   const number = typeof raw === "number" ? raw : Number(String(raw).trim());
   return Number.isFinite(number) ? number : raw;
 }

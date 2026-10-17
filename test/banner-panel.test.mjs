@@ -197,3 +197,10 @@ test("moveItem reorders within one list", () => {
   assert.deepEqual(moveItem(["a", "b", "c"], 0, 2), ["b", "c", "a"]);
   assert.deepEqual(moveItem(["a", "b", "c"], 2, 0), ["c", "a", "b"]);
 });
+
+test("blank numeric condition values stay invalid while explicit zero is preserved", () => {
+  for (const value of ["", "   ", "0"]) {
+    const {record} = ruleRecord({match: {}, conditions: [{entity_id: "sensor.x", operator: "below", value}]});
+    assert.equal(record.conditions[0].value, value === "0" ? 0 : value);
+  }
+});

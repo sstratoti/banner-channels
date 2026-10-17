@@ -285,3 +285,10 @@ def test_rule_options_reject_malformed_payloads():
         ({"double_tap_action": {"action": "call-service", "service": "bad"}}, "double_tap_action"),
     ]:
         assert key in validate_rule({**base, **options}), (options, key)
+
+
+def test_blank_numeric_additional_values_are_invalid_but_zero_is_valid():
+    base = {"headline": "Door", "icon": "mdi:door", "match": {"kind": "entity", "entity_id": "sensor.door", "operator": "is", "value": "on"}}
+    for value in ("", "   ", 0):
+        errors = validate_rule({**base, "conditions": [{"entity_id": "sensor.x", "operator": "below", "value": value}]})
+        assert ("conditions_0_value" in errors) is (value != 0)

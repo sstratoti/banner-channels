@@ -77,27 +77,37 @@ def _is_template(value: str) -> bool:
 
 
 def _action_error(action: dict | None) -> str | None:
-    if action is not None and not isinstance(action, dict):
-        return "Choose an action."
-    if not action or not action.get("action") or action.get("action") == "none":
+    if action is None:
         return None
-    act = action["action"]
-    if act not in _ACTIONS:
+    if not isinstance(action, dict):
+        return "Choose an action."
+    act = action.get("action", "")
+    if act in (None, "", "none"):
+        return None
+    if not isinstance(act, str) or act not in _ACTIONS:
         return "Unknown action."
-    if act == "navigate" and not (action.get("navigation_path") or "").strip():
-        return "Navigate needs a path."
+    if act in ("toggle", "more-info") and not isinstance(action.get("entity", ""), str):
+        return "Use an entity id."
+    if act == "navigate":
+        path = action.get("navigation_path")
+        if not isinstance(path, str) or not path.strip():
+            return "Navigate needs a path."
     if act == "url":
-        url = (action.get("url_path") or "").strip()
-        if not (url.startswith("http://") or url.startswith("https://") or url.startswith("/")):
+        url = action.get("url_path")
+        if not isinstance(url, str) or not url.strip().startswith(("http://", "https://", "/")):
             return "URL must start with http://, https://, or /."
     if act == "call-service":
-        service = action.get("service") or ""
+        service = action.get("service")
+        if not isinstance(service, str):
+            return "Service must look like domain.service."
         domain, _, name = service.partition(".")
         if not domain or not name or "." in name:
             return "Service must look like domain.service."
         data = action.get("data")
         if data is not None and not isinstance(data, dict):
             return "Service data must be a JSON object."
+        if "target" in action and not isinstance(action["target"], str):
+            return "Use a target entity id."
     return None
 
 

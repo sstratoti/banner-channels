@@ -694,3 +694,15 @@ def test_feed_metadata_and_signatures_include_new_options():
         changed = copy.deepcopy(feed)
         changed["alerts"][0][key] = value
         assert feed_signature(changed) != feed_signature(feed)
+
+
+def test_scalar_expected_values_compare_consistently_in_primary_and_extra_attributes():
+    now = datetime(2026, 10, 16, 12, tzinfo=TZ)
+    for actual in (0, 12, False, True):
+        for operator, expected_active in (("is", True), ("is_not", False)):
+            condition = {"entity_id": "sensor.x", "attribute": "value", "operator": operator, "value": actual}
+            states = {"sensor.x": Snap("ready", "X", {"value": actual}), "binary_sensor.front_door": Snap("on", "Door")}
+            primary = _door_rule(match={"kind": "entity", **condition})
+            extra = _door_rule(conditions=[condition])
+            for rule in (primary, extra):
+                assert bool(evaluate([_channel()], [rule], states, now)["tablets"]["alerts"]) is expected_active

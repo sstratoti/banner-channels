@@ -136,6 +136,10 @@ def _resolve_action(action: dict | None, matched: str, kind: str) -> dict:
 def _condition_value(snap: Snap, condition: dict) -> str | None:
     attribute = condition.get("attribute")
     raw = (snap.attributes or {}).get(attribute) if attribute else snap.state
+    return _scalar_text(raw)
+
+
+def _scalar_text(raw) -> str | None:
     if isinstance(raw, bool):
         return "true" if raw else "false"
     if isinstance(raw, (str, int, float)):
@@ -147,7 +151,8 @@ def _condition_matches(snap: Snap | None, condition: dict) -> bool:
     if snap is None:
         return False
     value = _condition_value(snap, condition)
-    return _comparable(value, condition["operator"], condition["value"]) and compare(value, condition["operator"], condition["value"])
+    expected = _scalar_text(condition["value"])
+    return expected is not None and _comparable(value, condition["operator"], expected) and compare(value, condition["operator"], expected)
 
 
 def _extra_conditions(rule: dict) -> list[dict]:

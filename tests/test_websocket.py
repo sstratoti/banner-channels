@@ -343,3 +343,24 @@ async def test_save_round_trips_rule_options_and_rejects_invalid_double_tap(hass
     assert "double_tap_action" in rejected["result"]["errors"]
     listed = await _send(client, {"type": "banner_channels/list"})
     assert listed["result"]["rules"] == [record]
+
+
+@pytest.mark.asyncio
+async def test_malformed_double_tap_fields_return_errors_without_replacing_rule(hass, hass_ws_client, enable_custom_integrations):
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    saved = await _send(client, {"type": "banner_channels/save", "kind": "rule", "record": _door_rule()})
+    record = saved["result"]["record"]
+    for action in [
+        {"action": ["toggle"]}, {"action": []},
+        {"action": "call-service", "service": 123},
+        {"action": "navigate", "navigation_path": 123},
+        {"action": "url", "url_path": 123},
+        {"action": "toggle", "entity": 123},
+        {"action": "call-service", "service": "light.turn_on", "target": []},
+    ]:
+        response = await _send(client, {"type": "banner_channels/save", "kind": "rule", "record": {**record, "double_tap_action": action}})
+        assert response["success"] is True
+        assert "double_tap_action" in response["result"]["errors"]
+    listed = await _send(client, {"type": "banner_channels/list"})
+    assert listed["result"]["rules"] == [record]

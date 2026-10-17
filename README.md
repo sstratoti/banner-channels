@@ -47,6 +47,8 @@ Create a channel: name, rotate interval, badge, and empty behavior. Saving it cr
 
 Create a rule and tag it with one or more channels. A rule with no channel tags produces no slides. Fields: headline, subtext, icon, background and text colors, channels, match, an optional time window, an optional second condition, and tap and hold. In the headline or the subtext, `{name}` and `{state}` are replaced for each match. Text that contains `{{` or `{%` is a Jinja template, with variables `state`, `entity_id`, `name`, and `rule_id`. The icon, background, and text color accept the same templates. A rendered icon must be an `mdi:` name. A rendered color must look like `#c62828`.
 
+The sidebar uses Home Assistant's native entity, service, and icon pickers. Entity pickers also appear in the second condition and in tap/hold actions, including service targets. Leave a Toggle or More-info entity blank to use the matched entity. For an alert icon template, enable **Use template**; existing icon templates open in that mode automatically. Channel all-clear and severity icons use the icon picker too. Text inputs remain available if the native controls cannot load.
+
 ```json
 {
   "id": "uuid",

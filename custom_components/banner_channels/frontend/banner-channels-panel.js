@@ -366,6 +366,7 @@ button.primary { background: var(--primary-color, #03a9f4); color: var(--text-pr
 button.warn { background: transparent; color: var(--error-color, #b00020); border: 1px solid var(--error-color, #b00020); }
 .field { display: flex; flex-direction: column; margin-top: 16px; }
 .label { font-weight: 500; }
+ha-selector, ha-service-picker { display: block; width: 100%; margin-top: 6px; }
 input[type="text"], input[type="number"], select, textarea { margin-top: 6px; font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--divider-color, #e0e0e0); background: var(--card-background-color, #fff); color: inherit; width: 100%; box-sizing: border-box; }
 textarea { min-height: 72px; resize: vertical; }
 textarea.compact { min-height: 40px; }
@@ -403,6 +404,10 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
 
     set hass(value) {
       this._hass = value;
+      // Keep suggestions current without rebuilding the form or losing focus.
+      this.shadowRoot.querySelectorAll("ha-selector, ha-service-picker").forEach((node) => {
+        node.hass = value;
+      });
       if (!this._started) {
         this._started = true;
         this._load().catch((err) => {
@@ -501,7 +506,97 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       this._view = kind;
       this._errors = {};
       this._draft = kind === "channel" ? channelDraft(record) : ruleDraft(record);
+      this._iconTemplate = Boolean(this._draft.icon && !displayValue(this._draft.icon));
       this._render();
+      this._ensurePickers();
+    }
+
+    _ensurePickers() {
+      if (this._pickerLoad || (customElements.get("ha-selector") && customElements.get("ha-service-picker"))) return;
+      if (typeof window.loadCardHelpers !== "function" && !customElements.get("partial-panel-resolver")) return;
+      // A sidebar can open before any Lovelace editor has registered its controls.
+      // The button editor imports ha-selector and the service picker; ha-selector
+      // then loads entity/icon controls on demand, using HA's own module paths.
+      this._pickerLoad = (async () => {
+        try {
+          if (typeof window.loadCardHelpers !== "function") {
+            // Resolve the dashboard bundle without mounting a dashboard or navigating.
+            const resolver = document.createElement("partial-panel-resolver");
+            const options = resolver._getRoutes({
+              lovelace: { component_name: "lovelace", url_path: "lovelace" },
+            });
+            await options.routes.lovelace.load();
+          }
+          const helpers = await window.loadCardHelpers();
+          const card = await helpers.createCardElement({ type: "button" });
+          await card.constructor.getConfigElement();
+          if (this._view === "rule" || this._view === "channel") this._render();
+        } catch {
+          // Leave the text controls usable on older HA versions or load failure.
+          this._pickerLoad = null;
+        }
+      })();
+    }
+
+    _picker(type, value, label, placeholder, write) {
+      const tag = type === "service" ? "ha-service-picker" : "ha-selector";
+      if (!customElements.get(tag)) {
+        const text = input("text", value);
+        text.placeholder = placeholder;
+        text.setAttribute("aria-label", label);
+        text.addEventListener("input", () => write(text.value));
+        return text;
+      }
+      const node = document.createElement(tag);
+      node.hass = this._hass;
+      node.value = value || "";
+      node.label = label;
+      node.placeholder = placeholder;
+      node.required = false;
+      if (type === "service") node.showServiceId = true;
+      else node.selector = { [type]: {} };
+      node.addEventListener("value-changed", (event) => {
+        event.stopPropagation();
+        const next = event.detail.value ?? "";
+        node.value = next;
+        write(next);
+      });
+      return node;
+    }
+
+    _iconControl(value, label, placeholder, write, templates = false) {
+      const wrap = el("div");
+      const render = () => {
+        wrap.replaceChildren();
+        const templateMode = templates && this._iconTemplate;
+        if (templateMode || !customElements.get("ha-selector")) {
+          const text = textbox(value);
+          text.classList.add("compact");
+          text.placeholder = placeholder;
+          text.setAttribute("aria-label", label);
+          text.spellcheck = false;
+          text.addEventListener("input", () => { value = text.value; write(value); });
+          wrap.append(text);
+        } else {
+          wrap.append(this._picker("icon", value, label, placeholder, (next) => {
+            value = next;
+            write(next);
+          }));
+        }
+        if (templates) {
+          const toggle = input("checkbox", "");
+          toggle.checked = Boolean(this._iconTemplate);
+          toggle.addEventListener("change", () => {
+            this._iconTemplate = toggle.checked;
+            render();
+          });
+          const row = el("label", "check");
+          row.append(toggle, el("span", null, "Use template"));
+          wrap.append(row);
+        }
+      };
+      render();
+      return wrap;
     }
 
     _back() {
@@ -564,9 +659,7 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
         const text = input("text", draft.all_clear_text);
         text.addEventListener("input", () => { draft.all_clear_text = text.value; });
         page.append(field("All-clear text", text, HELP.channel.all_clear_text, [errors.all_clear_text]));
-        const icon = input("text", draft.all_clear_icon);
-        icon.placeholder = "mdi:check";
-        icon.addEventListener("input", () => { draft.all_clear_icon = icon.value; });
+        const icon = this._iconControl(draft.all_clear_icon, "All-clear icon", "mdi:check", (value) => { draft.all_clear_icon = value; });
         page.append(field("All-clear icon", icon, HELP.channel.all_clear_icon, [errors.all_clear_icon]));
       }
 
@@ -575,9 +668,7 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       if (errors.severity_styles) page.append(el("p", "error", errors.severity_styles));
       for (const [level, meta] of Object.entries(SEVERITIES)) {
         const style = draft.severity_styles[level];
-        const icon = input("text", style.icon);
-        icon.placeholder = SEVERITY_ICONS[level];
-        icon.addEventListener("input", () => { style.icon = icon.value; });
+        const icon = this._iconControl(style.icon, `${meta.label} icon`, SEVERITY_ICONS[level], (value) => { style.icon = value; });
         page.append(field(`${meta.label} icon`, icon, "", [errors[`severity_${level}_icon`], errors[`severity_${level}`]]));
         page.append(this._styleColorField(level, `${meta.label} color`, errors[`severity_${level}_color`]));
       }
@@ -607,11 +698,7 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       subtext.addEventListener("input", () => { draft.subtext = subtext.value; this._syncPreview(); });
       page.append(field("Subtext", subtext, HELP.rule.subtext, [errors.subtext]));
 
-      const icon = textbox(draft.icon);
-      icon.classList.add("compact");
-      icon.placeholder = "mdi:door-open";
-      icon.spellcheck = false;
-      icon.addEventListener("input", () => { draft.icon = icon.value; this._syncPreview(); });
+      const icon = this._iconControl(draft.icon, "Icon", "mdi:door-open", (value) => { draft.icon = value; this._syncPreview(); }, true);
       page.append(field("Icon", icon, HELP.rule.icon, [errors.icon]));
 
       page.append(this._colorField("Background", "background", HELP.rule.background, errors.background));
@@ -772,9 +859,7 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
         pattern.addEventListener("input", () => { draft.match.pattern = pattern.value; });
         wrap.append(field("Pattern", pattern, "", [errors.match_pattern]));
       } else {
-        const entity = input("text", draft.match.entity_id);
-        entity.placeholder = "binary_sensor.front_door";
-        entity.addEventListener("input", () => { draft.match.entity_id = entity.value; });
+        const entity = this._picker("entity", draft.match.entity_id, "Entity", "binary_sensor.front_door", (value) => { draft.match.entity_id = value; });
         wrap.append(field("Entity", entity, "", [errors.match_entity]));
       }
 
@@ -832,9 +917,7 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       row.append(enabled, el("span", null, "Require a second condition"));
       wrap.append(row);
       if (draft.alsoEnabled) {
-        const entity = input("text", draft.also_entity);
-        entity.placeholder = "sensor.example";
-        entity.addEventListener("input", () => { draft.also_entity = entity.value; });
+        const entity = this._picker("entity", draft.also_entity, "Also entity", "sensor.example", (value) => { draft.also_entity = value; });
         wrap.append(entity);
         const pair = el("div", "color-row");
         const operator = select(OPERATORS, draft.also_operator);
@@ -871,17 +954,12 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
         url.addEventListener("input", () => { action.url_path = url.value; });
         wrap.append(el("span", "label", "URL"), url);
       } else if (action.action === "more-info" || action.action === "toggle") {
-        const entity = input("text", action.entity);
-        entity.placeholder = "Blank uses the matched entity";
-        entity.addEventListener("input", () => { action.entity = entity.value; });
+        const entity = this._picker("entity", action.entity, `${label} entity`, "Blank uses the matched entity", (value) => { action.entity = value; });
         wrap.append(el("span", "label", "Entity"), entity);
+        wrap.append(helpNode("Blank uses the matched entity."));
       } else if (action.action === "call-service") {
-        const service = input("text", action.service);
-        service.placeholder = "domain.service";
-        service.addEventListener("input", () => { action.service = service.value; });
-        const target = input("text", action.target);
-        target.placeholder = "Optional target entity";
-        target.addEventListener("input", () => { action.target = target.value; });
+        const service = this._picker("service", action.service, `${label} service`, "domain.service", (value) => { action.service = value; });
+        const target = this._picker("entity", action.target, `${label} target`, "Optional target entity", (value) => { action.target = value; });
         const data = document.createElement("textarea");
         data.placeholder = "Optional JSON object";
         data.value = action.dataText || "";

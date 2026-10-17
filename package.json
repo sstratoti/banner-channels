@@ -7,5 +7,8 @@
     "test": "node --test"
   },
   "license": "MIT",
-  "homepage": "https://github.com/sstratoti/banner-channels"
+  "homepage": "https://github.com/sstratoti/banner-channels",
+  "devDependencies": {
+    "happy-dom": "^21.0.3"
+  }
 }

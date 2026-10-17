@@ -786,7 +786,8 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       icon.icon = iconName;
       icon.setAttribute("icon", iconName);
       copy.querySelector(".headline").textContent = (draft.headline || "").trim() || "Headline";
-      copy.querySelector(".subtext").textContent = (draft.subtext || "").trim() || "Subtext";
+      copy.querySelector(".subtext").textContent = (draft.subtext || "").trim();
+      copy.querySelector(".subtext").hidden = !copy.querySelector(".subtext").textContent;
       return row;
     }
 

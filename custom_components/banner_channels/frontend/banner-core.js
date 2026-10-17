@@ -120,6 +120,23 @@ export function cardEditorHelper(schema) {
   return CARD_EDITOR_HELPERS[schema && schema.name] || "";
 }
 
+export function alertVisible(alert, user) {
+  if (!Object.hasOwn(alert, "visibility")) return true;
+  const visibility = alert.visibility;
+  if (!visibility || typeof visibility !== "object" || Array.isArray(visibility)) return false;
+  if (visibility.mode === "all") return true;
+  if (!user) return false;
+  if (visibility.mode === "admin") return user.is_admin === true;
+  if (visibility.mode === "non_admin") return user.is_admin === false;
+  if (visibility.mode === "users") return typeof user.id === "string" && Array.isArray(visibility.user_ids) && visibility.user_ids.includes(user.id);
+  return false;
+}
+
+export function visibleFeed(attributes, user) {
+  const attrs = attributes || {};
+  return { ...attrs, alerts: (Array.isArray(attrs.alerts) ? attrs.alerts : []).filter((alert) => alertVisible(alert, user)) };
+}
+
 export function viewMode(state, attributes) {
   const attrs = attributes || {};
   if (state === "unavailable" || state === "unknown" || state == null) return "unavailable";
@@ -154,7 +171,8 @@ export function feedSignature(attributes) {
     alerts.map((alert) => [
       alert.id, alert.icon, alert.primary, alert.secondary || "",
       alert.background || "", alert.color || "", alert.severity || "",
-      alert.tap_action || null, alert.hold_action || null,
+      alert.tap_action || null, alert.hold_action || null, alert.double_tap_action || null,
+      alert.secondary_position || "below", alert.visibility || null,
     ]),
   ]);
 }

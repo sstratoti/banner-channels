@@ -209,3 +209,26 @@ test("describeAction chooses the side effect and ignores none", () => {
   );
   assert.equal(describeAction({ action: "call-service", service: "lock" }), null);
 });
+
+test("visibility modes hide restricted alerts until identity is known", async () => {
+  const { alertVisible, visibleFeed } = await import("../custom_components/banner_channels/frontend/banner-core.js");
+  const admin = {id: "one", is_admin: true};
+  const normal = {id: "two", is_admin: false};
+  for (const [visibility, user, expected] of [
+    [undefined, undefined, true], [{mode: "all"}, undefined, true],
+    [{mode: "admin"}, admin, true], [{mode: "admin"}, normal, false],
+    [{mode: "non_admin"}, normal, true], [{mode: "non_admin"}, undefined, false],
+    [{mode: "users", user_ids: ["two"]}, normal, true], [{mode: "users", user_ids: ["two"]}, admin, false],
+    [{mode: "users", user_ids: []}, normal, false], [{mode: "invalid"}, normal, false], [null, admin, false],
+  ]) assert.equal(alertVisible(visibility === undefined ? {} : {visibility}, user), expected);
+  const attrs = {alerts: [{id: "public"}, {id: "private", visibility: {mode: "admin"}}]};
+  assert.deepEqual(visibleFeed(attrs, normal).alerts.map((a) => a.id), ["public"]);
+  assert.equal(attrs.alerts.length, 2);
+});
+
+test("feed signature includes visibility secondary position and double tap", () => {
+  const base = {alerts: [{id: "one", primary: "Door"}]};
+  for (const options of [{secondary_position: "right"}, {visibility: {mode: "admin"}}, {double_tap_action: {action: "toggle", entity: "light.x"}}]) {
+    assert.notEqual(feedSignature({alerts: [{...base.alerts[0], ...options}]}), feedSignature(base));
+  }
+});

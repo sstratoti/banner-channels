@@ -1,5 +1,5 @@
 import {
-  validateConfig, stubEntity, cardLayout, CARD_EDITOR_SCHEMA, cardEditorLabel, cardEditorHelper, feedSignature, nextIndex, viewMode, slideCounter, describeAction, resolveIcon, severityLook,
+  validateConfig, visibleFeed, stubEntity, cardLayout, CARD_EDITOR_SCHEMA, cardEditorLabel, cardEditorHelper, feedSignature, nextIndex, viewMode, slideCounter, describeAction, resolveIcon, severityLook,
 } from "./banner-core.js";
 
 const Panel = customElements.get("ha-panel-lovelace") || customElements.get("hui-view");
@@ -33,13 +33,15 @@ class BannerChannelCard extends LitElement {
     if (!this._config) return;
     const stateObj = hass && hass.states ? hass.states[this._config.entity] : undefined;
     this._state = stateObj ? stateObj.state : "unavailable";
-    this._attrs = (stateObj && stateObj.attributes) || {};
+    const previousID = this._currentAlert()?.id;
+    this._attrs = visibleFeed(stateObj && stateObj.attributes, hass?.user);
     this._mode = viewMode(this._state, this._attrs);
     const sig = this._mode + feedSignature(this._attrs);
     if (sig !== this._sig) {
       this._sig = sig;
       const alerts = this._attrs.alerts || [];
-      if (this._index >= alerts.length) this._index = 0;
+      const retained = alerts.findIndex((alert) => alert.id === previousID);
+      this._index = retained >= 0 ? retained : 0;
       this._cancelFade();
       this._restartRotation();
       this._rev++;
@@ -130,6 +132,10 @@ class BannerChannelCard extends LitElement {
     if (pressed && !held) this._runAction("tap");
   }
 
+  _currentAlert() {
+    return (this._attrs?.alerts || [])[this._index];
+  }
+
   _runAction(kind) {
     if (this._mode !== "alerts") return;
     const alert = (this._attrs.alerts || [])[this._index] || {};
@@ -175,10 +181,12 @@ class BannerChannelCard extends LitElement {
       style="cursor:pointer;${sized}">
       <div class="row ${layout.align === "center" ? "center" : ""} ${look && look.accent ? "accent" : ""} ${counter ? "has-counter" : ""} ${this._fading ? "fade-out" : ""}" style=${rowStyle}>
         <ha-icon icon="${icon}" style=${iconStyle}></ha-icon>
-        <div class="text" style=${textStyle}>
+        <div class="text ${alert.secondary_position === "right" ? "secondary-right" : ""}" style=${textStyle}>
           ${look ? html`<div class="severity" style="color:${look.color}">${look.label}</div>` : ""}
-          <div class="primary">${alert.primary || ""}</div>
-          ${alert.secondary ? html`<div class="secondary">${alert.secondary}</div>` : ""}
+          <div class="headline-row">
+            <div class="primary">${alert.primary || ""}</div>
+            ${alert.secondary ? html`<div class="secondary">${alert.secondary}</div>` : ""}
+          </div>
         </div>
         ${counter ? html`<div class="counter" style=${textStyle}>${counter}</div>` : ""}
       </div>
@@ -215,6 +223,12 @@ class BannerChannelCard extends LitElement {
       }
       ha-icon { --mdc-icon-size: var(--banner-icon, 40px); flex: 0 0 auto; display: flex; }
       .text { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+      .headline-row { display: flex; flex-direction: column; min-width: 0; max-width: 100%; }
+      .secondary-right .headline-row { flex-direction: row; align-items: center; gap: 8px; width: 100%; }
+      .secondary-right .primary { flex: 1 1 0; min-width: 0; }
+      .secondary-right .secondary { flex: 0 1 auto; max-width: 60%; min-width: 0; }
+      .row.center .headline-row { text-align: center; }
+      .row.center .secondary-right .headline-row { text-align: left; }
       .severity, .primary, .secondary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .severity {
         font-size: var(--banner-severity, 11px); font-weight: 700; line-height: 1.3;

@@ -23,6 +23,7 @@
     <button id="bhide">hide</button>
     <button id="bclear">all_clear</button>
     <button id="bna">unavailable</button>
+    <button id="buser">switch admin/non-admin</button>
   </div>
   <div class="card-wrap"><div id="mount"></div></div>
   <pre id="log"></pre>
@@ -57,16 +58,23 @@
     const mount = document.getElementById("mount");
     const entity = "sensor.banner_tablets";
     let card;
+    let isAdmin = false;
     function mk(state, attributes) {
       mount.innerHTML = "";
       card = document.createElement("banner-channel-card");
       card.setConfig({ entity });
       mount.appendChild(card);
       card.hass = {
+        user: {id: isAdmin ? "admin" : "normal", is_admin: isAdmin},
         states: { [entity]: { state, attributes } },
         callService: (d, s, data) => log(`callService ${d}.${s} ${JSON.stringify(data)}`),
       };
     }
+    document.getElementById("buser").onclick = () => {
+      isAdmin = !isAdmin;
+      card.hass = {...card.hass, user: {id: isAdmin ? "admin" : "normal", is_admin: isAdmin}};
+      log(`user: ${isAdmin ? "admin" : "normal"}`);
+    };
     const three = [
       {
         id: "leak",
@@ -83,6 +91,7 @@
         icon: "mdi:garage-open",
         primary: "Garage door open",
         secondary: "14 min",
+        secondary_position: "right",
         severity: "warning",
         tap_action: { action: "more-info", entity: "cover.garage_door" },
       },
@@ -92,6 +101,7 @@
         primary: "Front lock battery low",
         secondary: "12%",
         severity: "info",
+        visibility: {mode: "admin"},
         tap_action: { action: "more-info", entity: "sensor.front_lock_battery" },
       },
     ];
@@ -135,6 +145,7 @@
         states: { [entity]: { state, attributes } },
         callService: () => {},
       };
+      if (config?.width) wrap.style.width = `${config.width}px`;
       if (index) {
         stillCard._index = index;
         stillCard.requestUpdate();
@@ -154,6 +165,7 @@
     still("Slide 3 of 9. The counter is the current slide, not the old total.", "9", feed({ rotate_interval: 0, alerts: nine }), 2);
     still("Warning, no custom color. Accent bar on the left.", "3", feed({ rotate_interval: 0, alerts: three }), 1);
     still("One alert. The counter stays hidden.", "1", feed({ rotate_interval: 0, alerts: [three[2]] }));
+    still("Narrow right secondary, long values, two visible slides.", "2", feed({alerts: [{...three[1], secondary: "A very long secondary value"}, three[0]]}), 0, {width: 280});
     const defaults = {
       info: { icon: "mdi:information-outline", color: "#0277bd" },
       warning: { icon: "mdi:alert-outline", color: "#ef6c00" },

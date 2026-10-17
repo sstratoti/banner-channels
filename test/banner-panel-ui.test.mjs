@@ -308,3 +308,11 @@ test("secondary position and double tap round trip and preview", async (t) => {
   assert.equal(await save(), record);
   assert.match(panel.shadowRoot.textContent, /JSON object/);
 });
+
+test("empty preview secondary text occupies no space in right mode", async (t) => {
+  const {panel} = await editor(t);
+  panel._openEditor("rule", {headline: "Door", secondary_position: "right"});
+  const secondary = panel.shadowRoot.querySelector(".preview .subtext");
+  assert.equal(secondary.textContent, "");
+  assert.equal(secondary.hidden, true);
+});

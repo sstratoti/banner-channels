@@ -9,6 +9,7 @@
   "license": "MIT",
   "homepage": "https://github.com/sstratoti/banner-channels",
   "devDependencies": {
-    "happy-dom": "^21.0.3"
+    "happy-dom": "^21.0.3",
+    "lit": "^3.3.3"
   }
 }

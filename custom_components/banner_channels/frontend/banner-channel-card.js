@@ -10,7 +10,7 @@ const css = LitElement.prototype.css;
 
 class BannerChannelCard extends LitElement {
   static get properties() {
-    return { _index: { state: true }, _fading: { state: true }, _rev: { state: true } };
+    return { _index: { state: true }, _rev: { state: true } };
   }
 
   setConfig(config) {
@@ -46,7 +46,6 @@ class BannerChannelCard extends LitElement {
       const alerts = this._attrs.alerts || [];
       const retained = alerts.findIndex((alert) => alert.id === previousID);
       this._index = retained >= 0 ? retained : 0;
-      this._cancelFade();
       this._restartRotation();
       this._rev++;
     }
@@ -64,7 +63,6 @@ class BannerChannelCard extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._stopRotation();
-    this._cancelFade();
     this._cancelGestures();
     if (this._visHandler) {
       document.removeEventListener("visibilitychange", this._visHandler);
@@ -74,12 +72,6 @@ class BannerChannelCard extends LitElement {
 
   _stopRotation() {
     if (this._timer) { clearInterval(this._timer); this._timer = null; }
-    this._cancelFade();
-  }
-
-  _cancelFade() {
-    if (this._fadeTimer) { clearTimeout(this._fadeTimer); this._fadeTimer = null; }
-    this._fading = false;
   }
 
   _restartRotation() {
@@ -93,17 +85,8 @@ class BannerChannelCard extends LitElement {
   }
 
   _tick() {
-    const advance = () => {
-      this._index = nextIndex(this._index, (this._attrs.alerts || []).length);
-      this._rev++;
-    };
-    this._fading = true;
+    this._index = nextIndex(this._index, (this._attrs.alerts || []).length);
     this._rev++;
-    this._fadeTimer = setTimeout(() => {
-      this._fadeTimer = null;
-      this._fading = false;
-      advance();
-    }, 180);
   }
 
   _clearPointer() {
@@ -221,7 +204,7 @@ class BannerChannelCard extends LitElement {
       @pointerup=${(event) => this._onPointerUp(event)}
       @pointercancel=${() => this._cancelGestures()}
       style="cursor:pointer;${sized}">
-      <div class="row ${layout.align === "center" ? "center" : ""} ${look && look.accent ? "accent" : ""} ${counter ? "has-counter" : ""} ${this._fading ? "fade-out" : ""}" style=${rowStyle}>
+      <div class="row ${layout.align === "center" ? "center" : ""} ${look && look.accent ? "accent" : ""} ${counter ? "has-counter" : ""}" style=${rowStyle}>
         <ha-icon icon="${icon}" style=${iconStyle}></ha-icon>
         <div class="text ${alert.secondary_position === "right" ? "secondary-right" : ""}" style=${textStyle}>
           ${look ? html`<div class="severity" style="color:${look.color}">${look.label}</div>` : ""}
@@ -250,13 +233,11 @@ class BannerChannelCard extends LitElement {
         min-height: var(--banner-height, 80px);
         padding: 8px 16px;
         box-sizing: border-box;
-        opacity: 1; transition: opacity 0.18s ease;
       }
       .row.center { justify-content: center; }
       .row.center .text { flex: 0 1 auto; align-items: center; text-align: center; }
       .row.accent { border-left: 3px solid transparent; padding-left: 13px; }
       .row.has-counter { padding-right: calc(var(--banner-counter, 12px) * 3.4); }
-      .fade-out { opacity: 0; }
       .counter {
         position: absolute; top: 8px; right: 12px;
         font-size: var(--banner-counter, 12px); font-weight: 700; letter-spacing: 0.04em; line-height: 1;

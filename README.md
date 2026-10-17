@@ -43,7 +43,7 @@ Create a channel: name, rotate interval, badge, and empty behavior. Saving it cr
 }
 ```
 
-`rotate_interval` is seconds between slides. `0` keeps the first slide on screen. `show_badge` shows which slide is on screen, such as `2/9`, at the top right, and hides that counter when only one alert is active. `empty` is `hide` or `all_clear`. `severity_styles` sets a default icon and color for Information, Warning, and Problem. A rule's own icon or text color replaces those defaults.
+`rotate_interval` is seconds between slides. Rotation swaps directly to the next alert without fades or animations. `0` keeps the first slide on screen. `show_badge` shows which slide is on screen, such as `2/9`, at the top right, and hides that counter when only one alert is active. `empty` is `hide` or `all_clear`. `severity_styles` sets a default icon and color for Information, Warning, and Problem. A rule's own icon or text color replaces those defaults.
 
 Create a rule and tag it with one or more channels. A rule with no channel tags produces no slides. Fields: headline, subtext, icon, background and text colors, channels, match, an optional time window, additional AND/OR conditions, visibility, secondary positioning, and tap/hold/double-tap actions. In the headline or the subtext, `{name}` and `{state}` are replaced for each match. Text that contains `{{` or `{%` is a Jinja template, with variables `state`, `entity_id`, `name`, and `rule_id`. The icon, background, and text color accept the same templates. A rendered icon must be an `mdi:` name. A rendered color must look like `#c62828`.
 

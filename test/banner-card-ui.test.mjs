@@ -213,3 +213,36 @@ test("dashboard editor supplies the canonical card type when it is missing", asy
   changeCardForm(editor, {entity: "sensor.new"});
   assert.equal(config.type, "custom:banner-channel");
 });
+
+test("rotation swaps alert content immediately without a delayed blank frame", async (t) => {
+  const {card} = await cardFor(t, [alert("one", {background: "#123456"}), alert("two", {background: "#654321", icon: "mdi:update"})]);
+  const tick = clock(t);
+  card._tick();
+  await card.updateComplete;
+  assert.equal(card.shadowRoot.querySelector(".primary").textContent, "two");
+  assert.equal(card.shadowRoot.querySelector("ha-icon").getAttribute("icon"), "mdi:update");
+  assert.equal(card.shadowRoot.querySelector(".row").style.background, "#654321");
+  tick(1000);
+  await card.updateComplete;
+  assert.equal(card.shadowRoot.querySelector(".primary").textContent, "two");
+  card._tick();
+  await card.updateComplete;
+  assert.equal(card.shadowRoot.querySelector(".primary").textContent, "one");
+});
+
+test("scheduled rotation swaps on the interval and stops after disconnect", async (t) => {
+  t.mock.timers.enable({apis: ["setTimeout", "setInterval", "Date"], now: 1000});
+  const {card} = await cardFor(t, [alert("one"), alert("two")], {attributes: {rotate_interval: 2}});
+  t.mock.timers.tick(1999);
+  await card.updateComplete;
+  assert.equal(card._currentAlert().id, "one");
+  t.mock.timers.tick(1);
+  await card.updateComplete;
+  assert.equal(card.shadowRoot.querySelector(".primary").textContent, "two");
+  t.mock.timers.tick(2000);
+  await card.updateComplete;
+  assert.equal(card._currentAlert().id, "one");
+  card.remove();
+  t.mock.timers.tick(2000);
+  assert.equal(card._currentAlert().id, "one");
+});

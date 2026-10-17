@@ -63,7 +63,7 @@ test("entity selections save and reopen, and clearing an action restores matched
   change(entities[3], undefined);
   const record = await save();
   assert.equal(record.match.entity_id, "binary_sensor.window");
-  assert.equal(record.also.entity_id, "sensor.new_mode");
+  assert.equal(record.conditions[0].entity_id, "sensor.new_mode");
   assert.deepEqual(record.tap_action, { action: "toggle", entity: "light.kitchen" });
   assert.deepEqual(record.hold_action, { action: "more-info" });
   panel._openEditor("rule", record);
@@ -184,4 +184,54 @@ test("opening the sidebar before a dashboard loads bootstraps the HA picker modu
   await panel._pickerLoad;
   assert.equal(selectors("entity").length, 1);
   assert.equal(selectors("icon").length, 1);
+});
+
+test("additional conditions add remove save and reopen without losing draft edits", async (t) => {
+  const { panel, window, change, selectors, save } = await editor(t);
+  panel._openEditor("rule", null);
+  const click = (text) => [...panel.shadowRoot.querySelectorAll("button")].find((n) => n.textContent === text).click();
+  const headline = panel.shadowRoot.querySelector("textarea");
+  headline.value = "Keep me";
+  headline.dispatchEvent(new window.Event("input"));
+  for (let i = 0; i < 3; i++) {
+    click("Add condition");
+    const row = panel.shadowRoot.querySelectorAll(".condition")[i];
+    change(row.querySelector("ha-selector"), `sensor.${i}`);
+    const value = row.querySelector('input[type="text"]');
+    value.value = "on";
+    value.dispatchEvent(new window.Event("input"));
+  }
+  panel.shadowRoot.querySelectorAll(".condition button")[1].click();
+  const logic = panel.shadowRoot.querySelector('[aria-label="Additional condition logic"]');
+  logic.value = "or";
+  logic.dispatchEvent(new window.Event("change"));
+  const record = await save();
+  assert.equal(record.headline, "Keep me");
+  assert.equal(record.conditions_logic, "or");
+  assert.deepEqual(record.conditions.map((c) => c.entity_id), ["sensor.0", "sensor.2"]);
+  assert.equal(Object.hasOwn(record, "also"), false);
+  panel._openEditor("rule", record);
+  assert.equal(selectors("entity").length, 3);
+  assert.equal(panel.shadowRoot.querySelectorAll(".condition").length, 2);
+});
+
+test("legacy also opens as one AND condition and is saved canonically", async (t) => {
+  const { panel, save } = await editor(t);
+  panel._openEditor("rule", { headline: "Door", also: {entity_id: "sensor.mode", operator: "is", value: "home"} });
+  assert.equal(panel.shadowRoot.querySelectorAll(".condition").length, 1);
+  assert.deepEqual((await save()).conditions, [{entity_id: "sensor.mode", operator: "is", value: "home"}]);
+});
+
+test("attribute selection follows its entity and preserves edits and indexed errors", async (t) => {
+  const { panel, change, selectors, save } = await editor(t);
+  panel._openEditor("rule", { headline: "Keep", match: {kind: "entity", entity_id: "sensor.old", operator: "is", value: "on"}, conditions: [{entity_id: "sensor.extra", operator: "is", value: "on"}] });
+  change(selectors("entity")[0], "sensor.new");
+  assert.equal(selectors("attribute")[0].selector.attribute.entity_id, "sensor.new");
+  change(selectors("attribute")[0], "ready");
+  panel._errors = {conditions_0_value: "Enter a number."};
+  panel._render();
+  assert.match(panel.shadowRoot.querySelector(".condition").textContent, /Enter a number/);
+  const record = await save();
+  assert.equal(record.match.attribute, "ready");
+  assert.equal(record.headline, "Keep");
 });

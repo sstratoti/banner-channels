@@ -28,10 +28,10 @@ export const HELP = {
       "Text and icon color, such as #ffffff. Text with {{ or {% is a Jinja template that must render a color like #ffffff. Leave blank to use the severity color, or the dashboard theme.",
     channels: "This alert appears on every channel you check.",
     match: "One entity, or a pattern that becomes one slide per matching entity.",
-    operator: "Compared with the entity state. Numeric operators need a number.",
+    operator: "Compared with the entity state or selected attribute. Numeric operators need a number.",
     exclude: "Entity ids to skip when using a pattern, one per line.",
     when: "Optional daily window in Home Assistant's time. An overnight window is allowed.",
-    also: "Optional second condition. Both must match.",
+    also: "The primary match is always required. AND requires all additional conditions; OR requires at least one.",
     tap: "What a click does. Blank opens more-info for the matched entity.",
     hold: "What a long press does. Blank does nothing.",
   },
@@ -161,6 +161,8 @@ export function ruleRecord(draft) {
     storedMatch.entity_id = match.entity_id || "";
   }
 
+  if (match.attribute) storedMatch.attribute = match.attribute.trim();
+
   const record = {
     headline: draft.headline ?? "",
     subtext: draft.subtext ?? "",
@@ -173,13 +175,13 @@ export function ruleRecord(draft) {
   };
   if (draft.id) record.id = draft.id;
   if (draft.whenEnabled) record.when = { from: draft.whenFrom || "", to: draft.whenTo || "" };
-  if (draft.alsoEnabled) {
-    record.also = {
-      entity_id: draft.also_entity || "",
-      operator: draft.also_operator || "",
-      value: comparisonValue(draft.also_operator, draft.also_value),
-    };
-  }
+  record.conditions = (draft.conditions || []).map((condition) => ({
+    entity_id: condition.entity_id || "",
+    ...(condition.attribute ? { attribute: condition.attribute.trim() } : {}),
+    operator: condition.operator || "is",
+    value: comparisonValue(condition.operator, condition.value),
+  }));
+  record.conditions_logic = draft.conditions_logic || "and";
   if (tap && tap.value) record.tap_action = tap.value;
   if (hold && hold.value) record.hold_action = hold.value;
   return { record };
@@ -309,10 +311,8 @@ function ruleDraft(record) {
       whenEnabled: false,
       whenFrom: "",
       whenTo: "",
-      alsoEnabled: false,
-      also_entity: "",
-      also_operator: "is",
-      also_value: "",
+      conditions: [],
+      conditions_logic: "and",
       tap_action: blankAction(),
       hold_action: blankAction(),
     };
@@ -330,6 +330,7 @@ function ruleDraft(record) {
     match: {
       kind: match.kind || "entity",
       entity_id: match.entity_id || "",
+      attribute: match.attribute || "",
       pattern: match.pattern || "",
       operator: match.operator || "is",
       value: match.value == null ? "" : String(match.value),
@@ -338,10 +339,10 @@ function ruleDraft(record) {
     whenEnabled: Boolean(record.when),
     whenFrom: record.when ? record.when.from || "" : "",
     whenTo: record.when ? record.when.to || "" : "",
-    alsoEnabled: Boolean(record.also),
-    also_entity: record.also ? record.also.entity_id || "" : "",
-    also_operator: record.also ? record.also.operator || "is" : "is",
-    also_value: record.also && record.also.value != null ? String(record.also.value) : "",
+    conditions: (record.conditions ?? (record.also ? [record.also] : [])).map((condition) => ({
+      ...condition, value: condition.value == null ? "" : String(condition.value),
+    })),
+    conditions_logic: record.conditions_logic || "and",
     tap_action: actionDraft(record.tap_action),
     hold_action: actionDraft(record.hold_action),
   };
@@ -366,6 +367,7 @@ button.primary { background: var(--primary-color, #03a9f4); color: var(--text-pr
 button.warn { background: transparent; color: var(--error-color, #b00020); border: 1px solid var(--error-color, #b00020); }
 .field { display: flex; flex-direction: column; margin-top: 16px; }
 .label { font-weight: 500; }
+.condition { margin: 12px 0; padding: 0 12px 12px; border: 1px solid var(--divider-color, #e0e0e0); border-radius: 8px; }
 ha-selector, ha-service-picker { display: block; width: 100%; margin-top: 6px; }
 input[type="text"], input[type="number"], select, textarea { margin-top: 6px; font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--divider-color, #e0e0e0); background: var(--card-background-color, #fff); color: inherit; width: 100%; box-sizing: border-box; }
 textarea { min-height: 72px; resize: vertical; }
@@ -706,7 +708,7 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       page.append(this._channelChecks(draft, errors));
       page.append(this._matchFields(draft, errors));
       page.append(this._windowFields(draft, errors));
-      page.append(this._alsoFields(draft, errors));
+      page.append(this._conditionsFields(draft, errors));
       page.append(this._actionFields("Tap", draft.tap_action, HELP.rule.tap, errors.tap_action));
       page.append(this._actionFields("Hold", draft.hold_action, HELP.rule.hold, errors.hold_action));
 
@@ -858,9 +860,17 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
         pattern.placeholder = "sensor.*battery*";
         pattern.addEventListener("input", () => { draft.match.pattern = pattern.value; });
         wrap.append(field("Pattern", pattern, "", [errors.match_pattern]));
+        const attribute = input("text", draft.match.attribute);
+        attribute.addEventListener("input", () => { draft.match.attribute = attribute.value; });
+        wrap.append(field("Attribute (optional)", attribute, "Blank compares the entity state.", [errors.match_attribute]));
       } else {
-        const entity = this._picker("entity", draft.match.entity_id, "Entity", "binary_sensor.front_door", (value) => { draft.match.entity_id = value; });
+        const attribute = this._attributeControl(draft.match);
+        const entity = this._picker("entity", draft.match.entity_id, "Entity", "binary_sensor.front_door", (value) => {
+          draft.match.entity_id = value;
+          if (attribute.localName === "ha-selector") attribute.selector = { attribute: { entity_id: value } };
+        });
         wrap.append(field("Entity", entity, "", [errors.match_entity]));
+        wrap.append(field("Attribute (optional)", attribute, "Blank compares the entity state.", [errors.match_attribute]));
       }
 
       const pair = el("div", "color-row");
@@ -904,35 +914,47 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       return field("Time window", wrap, HELP.rule.when, [errors.when]);
     }
 
-    _alsoFields(draft, errors) {
+    _attributeControl(condition) {
+      const attribute = this._picker("attribute", condition.attribute, "Attribute (optional)", "Blank uses state", (value) => { condition.attribute = value; });
+      if (attribute.localName === "ha-selector") attribute.selector = { attribute: { entity_id: condition.entity_id || "" } };
+      return attribute;
+    }
+
+    _conditionsFields(draft, errors) {
       const wrap = el("div");
-      const enabled = document.createElement("input");
-      enabled.type = "checkbox";
-      enabled.checked = Boolean(draft.alsoEnabled);
-      enabled.addEventListener("change", () => {
-        draft.alsoEnabled = enabled.checked;
+      const logic = select([["and", "AND — all must match"], ["or", "OR — at least one must match"]], draft.conditions_logic);
+      logic.setAttribute("aria-label", "Additional condition logic");
+      logic.addEventListener("change", () => { draft.conditions_logic = logic.value; });
+      wrap.append(logic);
+      draft.conditions.forEach((condition, index) => {
+        const row = el("div", "condition");
+        const attribute = this._attributeControl(condition);
+        const entity = this._picker("entity", condition.entity_id, `Condition ${index + 1} entity`, "sensor.example", (value) => {
+          condition.entity_id = value;
+          if (attribute.localName === "ha-selector") attribute.selector = { attribute: { entity_id: value } };
+        });
+        row.append(field(`Condition ${index + 1} entity`, entity, "", [errors[`conditions_${index}_entity`]]));
+        row.append(field("Attribute (optional)", attribute, "", [errors[`conditions_${index}_attribute`]]));
+        const pair = el("div", "color-row");
+        const operator = select(OPERATORS, condition.operator);
+        operator.addEventListener("change", () => { condition.operator = operator.value; });
+        const value = input("text", condition.value);
+        value.setAttribute("aria-label", `Condition ${index + 1} value`);
+        value.addEventListener("input", () => { condition.value = value.value; });
+        pair.append(operator, value);
+        row.append(field("Operator and value", pair, "", [errors[`conditions_${index}_operator`], errors[`conditions_${index}_value`]]));
+        const remove = button("Remove", "action");
+        remove.addEventListener("click", () => { draft.conditions.splice(index, 1); this._errors = {}; this._render(); });
+        row.append(remove);
+        wrap.append(row);
+      });
+      const add = button("Add condition", "action");
+      add.addEventListener("click", () => {
+        draft.conditions.push({ entity_id: "", attribute: "", operator: "is", value: "" });
         this._render();
       });
-      const row = el("label", "check");
-      row.append(enabled, el("span", null, "Require a second condition"));
-      wrap.append(row);
-      if (draft.alsoEnabled) {
-        const entity = this._picker("entity", draft.also_entity, "Also entity", "sensor.example", (value) => { draft.also_entity = value; });
-        wrap.append(entity);
-        const pair = el("div", "color-row");
-        const operator = select(OPERATORS, draft.also_operator);
-        operator.addEventListener("change", () => { draft.also_operator = operator.value; });
-        const value = input("text", draft.also_value);
-        value.addEventListener("input", () => { draft.also_value = value.value; });
-        pair.append(operator, value);
-        wrap.append(pair);
-      }
-      return field(
-        "Also",
-        wrap,
-        HELP.rule.also,
-        [errors.also_entity, errors.also_operator, errors.also_value],
-      );
+      wrap.append(add);
+      return field("Additional conditions", wrap, HELP.rule.also, [errors.conditions, errors.conditions_logic]);
     }
 
     _actionFields(label, action, help, error) {

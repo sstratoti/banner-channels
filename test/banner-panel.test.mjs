@@ -59,13 +59,13 @@ test("help sentences match the sidebar spec", () => {
   );
   assert.equal(HELP.rule.channels, "This alert appears on every channel you check.");
   assert.equal(HELP.rule.match, "One entity, or a pattern that becomes one slide per matching entity.");
-  assert.equal(HELP.rule.operator, "Compared with the entity state. Numeric operators need a number.");
+  assert.equal(HELP.rule.operator, "Compared with the entity state or selected attribute. Numeric operators need a number.");
   assert.equal(HELP.rule.exclude, "Entity ids to skip when using a pattern, one per line.");
   assert.equal(
     HELP.rule.when,
     "Optional daily window in Home Assistant's time. An overnight window is allowed.",
   );
-  assert.equal(HELP.rule.also, "Optional second condition. Both must match.");
+  assert.equal(HELP.rule.also, "The primary match is always required. AND requires all additional conditions; OR requires at least one.");
   assert.equal(HELP.rule.tap, "What a click does. Blank opens more-info for the matched entity.");
   assert.equal(HELP.rule.hold, "What a long press does. Blank does nothing.");
 });

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import math
 
 _SLUG = re.compile(r"[^a-z0-9]+")
 _ICON = re.compile(r"^mdi:[a-z0-9-]+$")
@@ -76,6 +77,8 @@ def _is_template(value: str) -> bool:
 
 
 def _action_error(action: dict | None) -> str | None:
+    if action is not None and not isinstance(action, dict):
+        return "Choose an action."
     if not action or not action.get("action") or action.get("action") == "none":
         return None
     act = action["action"]
@@ -96,6 +99,58 @@ def _action_error(action: dict | None) -> str | None:
         if data is not None and not isinstance(data, dict):
             return "Service data must be a JSON object."
     return None
+
+
+def normalize_rule_options(data: dict) -> dict:
+    result = dict(data)
+    result.setdefault("conditions", [data["also"]] if data.get("also") else [])
+    result.pop("also", None)
+    result.setdefault("conditions_logic", "and")
+    result.setdefault("secondary_position", "below")
+    result.setdefault("visibility", {"mode": "all"})
+    for key in ("match",):
+        if isinstance(result.get(key), dict):
+            result[key] = dict(result[key])
+            if isinstance(result[key].get("attribute"), str):
+                result[key]["attribute"] = result[key]["attribute"].strip()
+    if isinstance(result["conditions"], list):
+        result["conditions"] = [
+            {**item, **({"attribute": item["attribute"].strip()} if isinstance(item.get("attribute"), str) else {})}
+            if isinstance(item, dict) else item for item in result["conditions"]
+        ]
+    visibility = result["visibility"]
+    if isinstance(visibility, dict):
+        visibility = dict(visibility)
+        ids = visibility.get("user_ids")
+        if isinstance(ids, list) and all(isinstance(item, str) for item in ids):
+            visibility["user_ids"] = list(dict.fromkeys(item.strip() for item in ids if item.strip()))
+        if visibility.get("mode") != "users":
+            visibility.pop("user_ids", None)
+        result["visibility"] = visibility
+    return result
+
+
+def _condition_errors(condition, prefix):
+    errors = {}
+    if not isinstance(condition, dict):
+        return {f"{prefix}_entity": "Choose an entity."}
+    if not isinstance(condition.get("entity_id"), str) or not condition["entity_id"].strip():
+        errors[f"{prefix}_entity"] = "Choose an entity."
+    attribute = condition.get("attribute", "")
+    if not isinstance(attribute, str):
+        errors[f"{prefix}_attribute"] = "Use an attribute name."
+    operator = condition.get("operator")
+    if not isinstance(operator, str) or operator not in _OPERATORS:
+        errors[f"{prefix}_operator"] = "Choose a comparison."
+    elif operator in _NUMERIC:
+        try:
+            if isinstance(condition.get("value"), bool) or not math.isfinite(float(condition.get("value"))):
+                raise ValueError
+        except (TypeError, ValueError):
+            errors[f"{prefix}_value"] = "Enter a number."
+    elif not isinstance(condition.get("value"), (str, int, float, bool)):
+        errors[f"{prefix}_value"] = "Enter a comparison value."
+    return errors
 
 
 def validate_rule(data: dict) -> dict[str, str]:
@@ -147,19 +202,31 @@ def validate_rule(data: dict) -> dict[str, str]:
     if when:
         if not _TIME.match(when.get("from") or "") or not _TIME.match(when.get("to") or ""):
             errors["when"] = "Use times like 20:00."
-    also = data.get("also")
-    if also:
-        if not (also.get("entity_id") or "").strip():
-            errors["also_entity"] = "Choose the extra entity."
-        if also.get("operator") not in _OPERATORS:
-            errors["also_operator"] = "Choose a comparison."
-        elif also.get("operator") in _NUMERIC:
-            try:
-                number = float(also.get("value"))
-                if number != number or number in (float("inf"), float("-inf")):
-                    raise ValueError
-            except (TypeError, ValueError):
-                errors["also_value"] = "Enter a number."
+    if "also" in data and "conditions" not in data and data.get("also"):
+        errors.update(_condition_errors(data["also"], "also"))
+    options = normalize_rule_options(data)
+    conditions = options["conditions"]
+    if not isinstance(conditions, list):
+        errors["conditions"] = "Use a list of additional conditions."
+    else:
+        for index, condition in enumerate(conditions):
+            errors.update(_condition_errors(condition, f"conditions_{index}"))
+    if options["conditions_logic"] not in ("and", "or"):
+        errors["conditions_logic"] = "Choose AND or OR."
+    if options["secondary_position"] not in ("below", "right"):
+        errors["secondary_position"] = "Choose Below or Right."
+    visibility = options["visibility"]
+    if not isinstance(visibility, dict) or visibility.get("mode") not in ("all", "admin", "non_admin", "users"):
+        errors["visibility"] = "Choose who can see this alert."
+    elif visibility["mode"] == "users":
+        ids = visibility.get("user_ids")
+        if not isinstance(ids, list) or not ids or any(not isinstance(item, str) or not item.strip() for item in ids):
+            errors["visibility"] = "Select at least one user."
+    if not isinstance(match.get("attribute", ""), str):
+        errors["match_attribute"] = "Use an attribute name."
+    double_error = _action_error(data.get("double_tap_action"))
+    if double_error:
+        errors["double_tap_action"] = double_error
     tap_error = _action_error(data.get("tap_action"))
     if tap_error:
         errors["tap_action"] = tap_error

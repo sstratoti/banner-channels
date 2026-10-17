@@ -257,3 +257,31 @@ def test_rule_checks_service_data_when_the_service_name_is_valid():
 
     assert "tap_action" in errors_for("nope")
     assert "tap_action" not in errors_for({"brightness": 10})
+
+
+def test_rule_options_normalize_legacy_and_defaults():
+    from validate import normalize_rule_options
+    extra = {"entity_id": "sensor.mode", "operator": "is", "value": "home"}
+    result = normalize_rule_options({"also": extra})
+    assert result["conditions"] == [extra]
+    assert result["conditions_logic"] == "and"
+    assert result["secondary_position"] == "below"
+    assert result["visibility"] == {"mode": "all"}
+    assert "also" not in result
+    assert normalize_rule_options({"also": extra, "conditions": []})["conditions"] == []
+    assert normalize_rule_options({"visibility": {"mode": "users", "user_ids": [" a ", "a", "b"]}})["visibility"] == {"mode": "users", "user_ids": ["a", "b"]}
+
+
+def test_rule_options_reject_malformed_payloads():
+    base = {"headline": "Door", "icon": "mdi:door", "match": {"kind": "entity", "entity_id": "sensor.door", "operator": "is", "value": "on"}}
+    for options, key in [
+        ({"conditions": {}}, "conditions"), ({"conditions": [None]}, "conditions_0_entity"),
+        ({"conditions": [{"entity_id": "sensor.x", "operator": "above", "value": "bad"}]}, "conditions_0_value"),
+        ({"conditions": [{"entity_id": "sensor.x", "operator": "bad"}]}, "conditions_0_operator"),
+        ({"conditions_logic": []}, "conditions_logic"), ({"secondary_position": "top"}, "secondary_position"),
+        ({"visibility": []}, "visibility"), ({"visibility": {"mode": "users", "user_ids": []}}, "visibility"),
+        ({"visibility": {"mode": "users", "user_ids": [1]}}, "visibility"),
+        ({"match": {**base["match"], "attribute": []}}, "match_attribute"),
+        ({"double_tap_action": {"action": "call-service", "service": "bad"}}, "double_tap_action"),
+    ]:
+        assert key in validate_rule({**base, **options}), (options, key)

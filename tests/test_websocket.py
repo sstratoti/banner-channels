@@ -322,3 +322,24 @@ async def test_panel_and_card_resource_follow_the_config_entry(
     assert "banner-channels" in hass.data[DATA_PANELS]
     assert len(_card_items(hass)) == 1
     assert _card_items(hass)[0]["url"] == CARD_URL
+
+
+@pytest.mark.asyncio
+async def test_save_round_trips_rule_options_and_rejects_invalid_double_tap(hass, hass_ws_client, enable_custom_integrations):
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    options = {
+        "conditions": [{"entity_id": "sensor.mode", "attribute": "ready", "operator": "is", "value": "true"}],
+        "conditions_logic": "or", "secondary_position": "right",
+        "visibility": {"mode": "users", "user_ids": ["user-one"]},
+        "double_tap_action": {"action": "toggle"},
+    }
+    saved = await _send(client, {"type": "banner_channels/save", "kind": "rule", "record": _door_rule(**options)})
+    record = saved["result"]["record"]
+    for key, value in options.items():
+        assert record[key] == value
+    rejected = await _send(client, {"type": "banner_channels/save", "kind": "rule", "record": {**record, "conditions": [None], "double_tap_action": {"action": "call-service", "service": "bad"}}})
+    assert "conditions_0_entity" in rejected["result"]["errors"]
+    assert "double_tap_action" in rejected["result"]["errors"]
+    listed = await _send(client, {"type": "banner_channels/list"})
+    assert listed["result"]["rules"] == [record]

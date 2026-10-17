@@ -21,7 +21,7 @@ from homeassistant.helpers.template import Template
 from .const import DOMAIN, PLATFORMS
 from .runtime import BannerRuntime
 from .store import BannerStore
-from .validate import severity_styles, slugify, validate_channel, validate_rule
+from .validate import normalize_rule_options, severity_styles, slugify, validate_channel, validate_rule
 
 _LOGGER = logging.getLogger(__name__)
 _FRONTEND_DIR = Path(__file__).parent / "frontend"
@@ -107,6 +107,7 @@ def _prepare_rule(hass, runtime, record):
     else:
         rule_id = uuid4().hex
         position = len(rules)
+    record = normalize_rule_options(record)
     match = dict(record.get("match") or {})
     if match.get("kind") == "filter":
         exclude = match.get("exclude") or []
@@ -130,8 +131,8 @@ def _prepare_rule(hass, runtime, record):
     }
     if record.get("when"):
         prepared["when"] = record["when"]
-    if record.get("also"):
-        prepared["also"] = record["also"]
+    for key in ("conditions", "conditions_logic", "secondary_position", "visibility", "double_tap_action"):
+        prepared[key] = record.get(key)
     if record.get("tap_action"):
         prepared["tap_action"] = record["tap_action"]
     if record.get("hold_action"):

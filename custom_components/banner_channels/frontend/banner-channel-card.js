@@ -14,6 +14,7 @@ class BannerChannelCard extends LitElement {
   }
 
   setConfig(config) {
+    this._cancelGestures();
     this._config = validateConfig(config);
     this._index = 0;
     this._sig = null;
@@ -36,6 +37,9 @@ class BannerChannelCard extends LitElement {
     const previousID = this._currentAlert()?.id;
     this._attrs = visibleFeed(stateObj && stateObj.attributes, hass?.user);
     this._mode = viewMode(this._state, this._attrs);
+    const remainsVisible = (alert) => this._mode === "alerts" && this._attrs.alerts.some((item) => item.id === alert.id);
+    if (this._press && !remainsVisible(this._press.alert)) this._clearPointer();
+    if (this._pendingTap && !remainsVisible(this._pendingTap.alert)) this._cancelPendingTap();
     const sig = this._mode + feedSignature(this._attrs);
     if (sig !== this._sig) {
       this._sig = sig;
@@ -61,7 +65,7 @@ class BannerChannelCard extends LitElement {
     super.disconnectedCallback();
     this._stopRotation();
     this._cancelFade();
-    this._clearPointer();
+    this._cancelGestures();
     if (this._visHandler) {
       document.removeEventListener("visibilitychange", this._visHandler);
       this._visHandler = null;
@@ -107,40 +111,78 @@ class BannerChannelCard extends LitElement {
     this._press = null;
   }
 
-  _onPointerDown(event) {
-    if (event.button !== 0) return;
+  _cancelPendingTap() {
+    if (this._tapTimer) { clearTimeout(this._tapTimer); this._tapTimer = null; }
+    this._pendingTap = null;
+  }
+
+  _cancelGestures() {
     this._clearPointer();
+    this._cancelPendingTap();
+  }
+
+  _onPointerDown(event) {
+    if (event.button !== 0 || this._press || this._mode !== "alerts") return;
+    const alert = this._currentAlert();
+    if (!alert) return;
+    let previousTap = this._pendingTap;
+    this._cancelPendingTap();
+    if (previousTap && previousTap.alert.id !== alert.id) {
+      this._runAction("tap", previousTap.alert);
+      previousTap = null;
+    }
     this._holdFired = false;
-    this._press = { x: event.clientX, y: event.clientY };
+    const press = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, alert, previousTap };
+    this._press = press;
+    event.currentTarget?.setPointerCapture?.(event.pointerId);
     this._holdTimer = setTimeout(() => {
+      this._holdTimer = null;
+      if (this._press !== press) return;
       this._holdFired = true;
-      this._runAction("hold");
+      this._runAction("hold", press.alert);
     }, 500);
   }
 
   _onPointerMove(event) {
-    if (!this._press) return;
+    if (!this._press || event.pointerId !== this._press.pointerId) return;
     const dx = event.clientX - this._press.x;
     const dy = event.clientY - this._press.y;
-    if ((dx * dx) + (dy * dy) > 100) this._clearPointer();
+    if ((dx * dx) + (dy * dy) > 100) this._cancelGestures();
   }
 
-  _onPointerUp() {
-    const held = this._holdFired;
+  _onPointerUp(event) {
     const pressed = this._press;
+    if (!pressed || (event && event.pointerId !== pressed.pointerId)) return;
+    const held = this._holdFired;
     this._clearPointer();
-    if (pressed && !held) this._runAction("tap");
+    if (held) return;
+    const previous = pressed.previousTap;
+    if (previous && Date.now() - previous.at < 250) {
+      this._runAction("double_tap", pressed.alert);
+      return;
+    }
+    if (previous) this._runAction("tap", previous.alert);
+    if (!describeAction(pressed.alert.double_tap_action)) {
+      this._runAction("tap", pressed.alert);
+      return;
+    }
+    this._pendingTap = { alert: pressed.alert, at: Date.now() };
+    this._tapTimer = setTimeout(() => {
+      this._tapTimer = null;
+      const pending = this._pendingTap;
+      this._pendingTap = null;
+      if (pending) this._runAction("tap", pending.alert);
+    }, 250);
   }
 
   _currentAlert() {
     return (this._attrs?.alerts || [])[this._index];
   }
 
-  _runAction(kind) {
-    if (this._mode !== "alerts") return;
-    const alert = (this._attrs.alerts || [])[this._index] || {};
-    const action = alert[kind === "hold" ? "hold_action" : "tap_action"];
-    performAction(this, this._hass, action);
+  _runAction(kind, alert = this._currentAlert()) {
+    if (this._mode !== "alerts" || !alert || !this._attrs.alerts.some((item) => item.id === alert.id)) return;
+    const key = kind === "hold" ? "hold_action" : kind === "double_tap" ? "double_tap_action" : "tap_action";
+    performAction(this, this._hass, alert[key]);
   }
 
   _syncHost() {
@@ -176,8 +218,8 @@ class BannerChannelCard extends LitElement {
     return html`<ha-card
       @pointerdown=${(event) => this._onPointerDown(event)}
       @pointermove=${(event) => this._onPointerMove(event)}
-      @pointerup=${() => this._onPointerUp()}
-      @pointercancel=${() => this._clearPointer()}
+      @pointerup=${(event) => this._onPointerUp(event)}
+      @pointercancel=${() => this._cancelGestures()}
       style="cursor:pointer;${sized}">
       <div class="row ${layout.align === "center" ? "center" : ""} ${look && look.accent ? "accent" : ""} ${counter ? "has-counter" : ""} ${this._fading ? "fade-out" : ""}" style=${rowStyle}>
         <ha-icon icon="${icon}" style=${iconStyle}></ha-icon>

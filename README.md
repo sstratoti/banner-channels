@@ -86,6 +86,8 @@ The primary match is always required. `conditions_logic: and` requires every add
 
 **Secondary value position** places the existing subtext below or to the right of the headline; severity stays above. **Visible to** offers Everyone, Admins, Non-admins, or Specific users. Specific users shows a selectable list of active Home Assistant users by name and stores their IDs, so renaming a user preserves the selection. This filters dashboard display only: the shared channel sensor still contains all active alerts. The dashboard counter and rotation count only visible alerts. If every alert is hidden for the logged-in user, the card uses the channel’s normal hide/all-clear setting.
 
+Tap executes immediately unless Double tap has an enabled action. With Double tap configured, a single tap waits 250 ms; two taps run only Double tap. Hold uses a 500 ms press. Movement, card removal, or an alert becoming hidden cancels pending gestures. Actions remain tied to the pressed alert if the carousel rotates.
+
 On a dashboard, choose Add card and pick Banner Channel. The editor asks for the channel sensor. The same card in YAML is:
 
 ```yaml

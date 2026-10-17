@@ -78,3 +78,89 @@ test("secondary position renders severity above headline and right value", async
   const {card} = await cardFor(t, [alert("Door", {secondary_position: "right"})]);
   assert.ok(!card.shadowRoot.querySelector(".secondary"));
 });
+
+function press(card, id = 1) {
+  card.shadowRoot.querySelector("ha-card").dispatchEvent(new window.PointerEvent("pointerdown", {button: 0, pointerId: id, clientX: 0, clientY: 0}));
+}
+function release(card, id = 1) {
+  card.shadowRoot.querySelector("ha-card").dispatchEvent(new window.PointerEvent("pointerup", {button: 0, pointerId: id}));
+}
+function clock(t) {
+  t.mock.timers.enable({apis: ["setTimeout", "Date"], now: 1000});
+  return (milliseconds) => t.mock.timers.tick(milliseconds);
+}
+
+test("tap without double action runs immediately", async (t) => {
+  const {card, services} = await cardFor(t, [alert("one")]);
+  press(card); release(card);
+  assert.equal(services.length, 1);
+  assert.deepEqual(services[0], ["homeassistant", "toggle", {entity_id: "light.one"}]);
+});
+
+test("single tap with double action runs after 250 ms", async (t) => {
+  const {card, services} = await cardFor(t, [alert("one", {double_tap_action: {action: "toggle", entity: "light.double"}})]);
+  const tick = clock(t);
+  press(card); release(card);
+  assert.equal(services.length, 0);
+  tick(249); assert.equal(services.length, 0);
+  tick(1); assert.equal(services.length, 1);
+  assert.equal(services[0][2].entity_id, "light.one");
+});
+
+test("two taps execute only double tap", async (t) => {
+  const {card, services} = await cardFor(t, [alert("one", {double_tap_action: {action: "toggle", entity: "light.double"}})]);
+  const tick = clock(t);
+  press(card); release(card); tick(100); press(card); release(card); tick(1000);
+  assert.deepEqual(services.map((s) => s[2].entity_id), ["light.double"]);
+});
+
+test("hold at 500 ms executes only hold including after an initial tap", async (t) => {
+  const {card, services} = await cardFor(t, [alert("one", {double_tap_action: {action: "toggle", entity: "light.double"}, hold_action: {action: "toggle", entity: "light.hold"}})]);
+  const tick = clock(t);
+  press(card); release(card); tick(100); press(card);
+  tick(499); assert.equal(services.length, 0);
+  tick(1); release(card); tick(1000);
+  assert.deepEqual(services.map((s) => s[2].entity_id), ["light.hold"]);
+});
+
+test("rotation between press and release uses captured alert action", async (t) => {
+  const {card, services} = await cardFor(t, [alert("one"), alert("two")]);
+  press(card); card._index = 1; release(card);
+  assert.equal(services[0][2].entity_id, "light.one");
+});
+
+test("identity change cancels actions for newly hidden alert", async (t) => {
+  const {card, hass, services} = await cardFor(t, [alert("one", {visibility: {mode: "users", user_ids: ["normal"]}, double_tap_action: {action: "toggle", entity: "light.double"}})]);
+  const tick = clock(t);
+  press(card); release(card);
+  card.hass = {...hass, user: {id: "other", is_admin: false}};
+  tick(1000);
+  assert.equal(services.length, 0);
+});
+
+test("movement pointercancel configuration and disconnect cancel pending gestures", async (t) => {
+  for (const cancel of [
+    (card) => card.shadowRoot.querySelector("ha-card").dispatchEvent(new window.PointerEvent("pointercancel", {pointerId: 1})),
+    (card) => card.setConfig({entity: "sensor.channel"}),
+    (card) => card.remove(),
+  ]) {
+    const {card, services} = await cardFor(t, [alert("one", {double_tap_action: {action: "toggle", entity: "light.double"}})]);
+    const tick = clock(t);
+    press(card); release(card); cancel(card); tick(1000);
+    assert.equal(services.length, 0);
+    t.mock.timers.reset();
+  }
+  const {card, services} = await cardFor(t, [alert("one")]);
+  const tick = clock(t);
+  press(card);
+  card.shadowRoot.querySelector("ha-card").dispatchEvent(new window.PointerEvent("pointermove", {pointerId: 1, clientX: 30}));
+  tick(600); release(card);
+  assert.equal(services.length, 0);
+});
+
+test("taps on different alerts never combine into a double tap", async (t) => {
+  const {card, services} = await cardFor(t, [alert("one", {double_tap_action: {action: "toggle", entity: "light.double1"}}), alert("two", {double_tap_action: {action: "toggle", entity: "light.double2"}})]);
+  const tick = clock(t);
+  press(card); release(card); tick(50); card._index = 1; press(card); release(card); tick(300);
+  assert.deepEqual(services.map((s) => s[2].entity_id), ["light.one", "light.two"]);
+});

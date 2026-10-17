@@ -316,3 +316,178 @@ test("empty preview secondary text occupies no space in right mode", async (t) =
   assert.equal(secondary.textContent, "");
   assert.equal(secondary.hidden, true);
 });
+
+function templateConnection(hass) {
+  const subscriptions = [];
+  hass.connection = {
+    subscribeMessage: async (callback, message) => {
+      const subscription = {callback, message, removed: false};
+      subscriptions.push(subscription);
+      return () => { subscription.removed = true; };
+    },
+  };
+  return subscriptions;
+}
+
+test("editor preview renders Jinja using HA and retains source in the text fields", async (t) => {
+  const {panel, hass} = await editor(t);
+  const subscriptions = templateConnection(hass);
+  hass.states["update.home_assistant"] = {state: "on", attributes: {friendly_name: "HA Update"}};
+  const source = "{{ state_attr('update.home_assistant', 'latest_version') }}";
+  panel._openEditor("rule", {id: "update-rule", headline: "{name}", subtext: source, match: {kind: "entity", entity_id: "update.home_assistant"}});
+  assert.equal(panel.shadowRoot.querySelector(".preview .subtext").textContent.includes("{{"), false);
+  await panel._startTemplatePreview(panel._previewTask);
+  assert.equal(subscriptions.length, 1);
+  assert.equal(subscriptions[0].message.type, "render_template");
+  assert.deepEqual(subscriptions[0].message.variables, {state: "on", name: "HA Update", entity_id: "update.home_assistant", rule_id: "update-rule"});
+  subscriptions[0].callback({result: {subtext: "2026.10.3"}});
+  assert.equal(panel.shadowRoot.querySelector(".preview .subtext").textContent, "2026.10.3");
+  assert.equal(panel.shadowRoot.querySelector(".preview .headline").textContent, "HA Update");
+  assert.ok([...panel.shadowRoot.querySelectorAll("textarea")].some((node) => node.value === source));
+  subscriptions[0].callback({result: {subtext: "2026.10.4"}});
+  assert.equal(panel.shadowRoot.querySelector(".preview .subtext").textContent, "2026.10.4");
+  panel.disconnectedCallback();
+  assert.equal(subscriptions[0].removed, true);
+});
+
+test("preview rejects stale results after edits and navigation and reports template errors", async (t) => {
+  const {panel, hass, window} = await editor(t);
+  const subscriptions = templateConnection(hass);
+  panel._openEditor("rule", {subtext: "{{ 1 }}"});
+  await panel._startTemplatePreview(panel._previewTask);
+  const input = [...panel.shadowRoot.querySelectorAll("textarea")].find((node) => node.value === "{{ 1 }}");
+  input.value = "{{ 2 }}";
+  input.dispatchEvent(new window.Event("input"));
+  await panel._startTemplatePreview(panel._previewTask);
+  assert.equal(subscriptions[0].removed, true);
+  subscriptions[0].callback({result: {subtext: "Old"}});
+  subscriptions[1].callback({result: {subtext: "New"}});
+  assert.equal(panel.shadowRoot.querySelector(".preview .subtext").textContent, "New");
+  subscriptions[1].callback({error: "UndefinedError: example is undefined"});
+  assert.match(panel.shadowRoot.querySelector(".preview-status").textContent, /example is undefined/);
+  assert.equal(panel.shadowRoot.querySelector(".preview .subtext").textContent, "");
+  subscriptions[1].callback({result: {subtext: "Recovered"}});
+  assert.equal(panel.shadowRoot.querySelector(".preview .subtext").textContent, "Recovered");
+  assert.equal(panel.shadowRoot.querySelector(".preview-status").textContent, "");
+  panel._back();
+  subscriptions[1].callback({result: {subtext: "Late"}});
+  assert.equal(subscriptions[1].removed, true);
+  assert.ok(!panel.shadowRoot.querySelector(".preview"));
+});
+
+test("preview unsubscribes when navigation happens before subscription setup finishes", async (t) => {
+  const {panel, hass} = await editor(t);
+  let finish;
+  let removed = false;
+  hass.connection = {subscribeMessage: () => new Promise((resolve) => {finish = () => resolve(() => {removed = true;});})};
+  panel._openEditor("rule", {subtext: "{{ 1 }}"});
+  const pending = panel._startTemplatePreview(panel._previewTask);
+  panel._openEditor("rule", {headline: "Another alert"});
+  finish();
+  await pending;
+  assert.equal(removed, true);
+  assert.equal(panel.shadowRoot.querySelector(".preview .headline").textContent, "Another alert");
+});
+
+test("preview refreshes entity context without rebuilding the editor and handles connection errors", async (t) => {
+  const {panel, hass, selectors, change} = await editor(t);
+  const subscriptions = templateConnection(hass);
+  panel._openEditor("rule", {headline: "{{ name }}", match: {kind: "entity", entity_id: "sensor.one"}});
+  const entity = selectors("entity")[0];
+  change(entity, "sensor.two");
+  await panel._startTemplatePreview(panel._previewTask);
+  assert.equal(subscriptions[0].message.variables.entity_id, "sensor.two");
+  panel.hass = {...hass, states: {"sensor.two": {state: "ready", attributes: {friendly_name: "Two"}}}};
+  assert.equal(selectors("entity")[0], entity);
+  await panel._startTemplatePreview(panel._previewTask);
+  assert.equal(subscriptions[1].message.variables.name, "Two");
+  panel._back();
+  hass.connection.subscribeMessage = async () => {throw new Error("Template syntax error");};
+  panel._openEditor("rule", {subtext: "{{"});
+  await panel._startTemplatePreview(panel._previewTask);
+  assert.match(panel.shadowRoot.querySelector(".preview-status").textContent, /Template syntax error/);
+});
+
+test("pattern preview chooses first entity by name and respects exclusions", async (t) => {
+  const {panel, hass} = await editor(t);
+  const subscriptions = templateConnection(hass);
+  hass.states = {
+    "sensor.z": {state: "on", attributes: {friendly_name: "Alpha"}},
+    "sensor.a": {state: "off", attributes: {friendly_name: "Zeta"}},
+    "sensor.skip": {state: "on", attributes: {friendly_name: "Aardvark"}},
+  };
+  panel._openEditor("rule", {subtext: "{{ name }}", match: {kind: "filter", pattern: "sensor.*", exclude: ["sensor.skip"]}});
+  await panel._startTemplatePreview(panel._previewTask);
+  assert.equal(subscriptions[0].message.variables.entity_id, "sensor.z");
+  panel.disconnectedCallback();
+});
+
+test("preview cleans up rejected unsubscribe calls and resumes after reconnecting", async (t) => {
+  const {panel, hass} = await editor(t);
+  let requests = 0;
+  hass.connection = {subscribeMessage: async () => {
+    requests++;
+    return () => Promise.reject(new Error("Connection closed"));
+  }};
+  panel._openEditor("rule", {subtext: "{{ 1 }}"});
+  await panel._startTemplatePreview(panel._previewTask);
+  panel.disconnectedCallback();
+  panel.connectedCallback();
+  await panel._startTemplatePreview(panel._previewTask);
+  assert.equal(requests, 2);
+  panel.disconnectedCallback();
+});
+
+test("preview renders template icons and colors and drops invalid style results", async (t) => {
+  const {panel, hass} = await editor(t);
+  const subscriptions = templateConnection(hass);
+  panel._openEditor("rule", {icon: "{{ 'mdi:update' }}", background: "{{ '#ffffff' }}", color: "{{ '#123456' }}"});
+  await panel._startTemplatePreview(panel._previewTask);
+  subscriptions[0].callback({result: {icon: "mdi:update", background: "#ffffff", color: "#123456"}});
+  const preview = panel.shadowRoot.querySelector(".preview");
+  assert.equal(preview.querySelector("ha-icon").icon, "mdi:update");
+  assert.equal(preview.style.color, "#123456");
+  subscriptions[0].callback({result: {icon: "bad-icon", background: "bad-color", color: "bad-color"}});
+  assert.equal(panel.shadowRoot.querySelector(".preview").style.color, "");
+  assert.equal(panel.shadowRoot.querySelector(".preview ha-icon").icon, "mdi:information");
+  panel.disconnectedCallback();
+});
+
+test("late user loading after disconnect cannot restart template subscriptions", async (t) => {
+  const {panel, hass, window} = await editor(t);
+  const subscriptions = templateConnection(hass);
+  let finish;
+  const call = hass.callWS;
+  hass.callWS = (message) => message.type === "config/auth/list" ? new Promise((resolve) => {finish = resolve;}) : call(message);
+  window.document.body.append(panel);
+  panel._openEditor("rule", {subtext: "{{ 1 }}", visibility: {mode: "users", user_ids: ["one"]}});
+  const userLoad = panel._loadUsers();
+  await panel._startTemplatePreview(panel._previewTask);
+  panel.remove();
+  finish([{id: "one", name: "One", is_active: true}]);
+  await userLoad;
+  await panel._startTemplatePreview(panel._previewTask);
+  assert.equal(subscriptions.length, 1);
+  assert.equal(subscriptions[0].removed, true);
+});
+
+test("pattern preview prefers an entity satisfying state or attribute comparisons", async (t) => {
+  const {panel, hass} = await editor(t);
+  const subscriptions = templateConnection(hass);
+  hass.states = {
+    "sensor.a": {state: "off", attributes: {friendly_name: "A", battery: 90}},
+    "sensor.b": {state: "on", attributes: {friendly_name: "B", battery: 10}},
+  };
+  for (const match of [
+    {kind: "filter", pattern: "sensor.*", operator: "is", value: "on"},
+    {kind: "filter", pattern: "sensor.*", attribute: "battery", operator: "below", value: 20},
+  ]) {
+    panel._openEditor("rule", {subtext: "{{ entity_id }}", match});
+    await panel._startTemplatePreview(panel._previewTask);
+    assert.equal(subscriptions.at(-1).message.variables.entity_id, "sensor.b");
+  }
+  panel._openEditor("rule", {subtext: "{{ name }}", match: {kind: "filter", pattern: "sensor.*", operator: "is", value: "not-active"}});
+  await panel._startTemplatePreview(panel._previewTask);
+  assert.equal(subscriptions.at(-1).message.variables.entity_id, "sensor.a");
+  panel.disconnectedCallback();
+});

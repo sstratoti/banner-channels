@@ -232,6 +232,73 @@ export function displayValue(value) {
   return text;
 }
 
+const PREVIEW_FIELDS = ["headline", "subtext", "icon", "background", "color"];
+
+function hasTemplate(value) {
+  return value.includes("{{") || value.includes("{%");
+}
+
+function previewMatches(entity, match) {
+  const raw = match.attribute ? entity.attributes?.[match.attribute] : entity.state;
+  if (raw == null || !["string", "number", "boolean"].includes(typeof raw)) return false;
+  const value = String(raw);
+  const expected = String(match.value ?? "");
+  const equality = match.operator === "is" || match.operator === "is_not";
+  if (["unknown", "unavailable"].includes(value) && !(equality && ["unknown", "unavailable"].includes(expected))) return false;
+  if (match.operator === "is") return value === expected;
+  if (match.operator === "is_not") return value !== expected;
+  if (!value.trim() || !expected.trim()) return false;
+  const left = Number(value), right = Number(expected);
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+  if (match.operator === "above") return left > right;
+  if (match.operator === "at_or_above") return left >= right;
+  if (match.operator === "below") return left < right;
+  if (match.operator === "at_or_below") return left <= right;
+  return false;
+}
+
+function previewVariables(draft, hass, channels) {
+  const states = hass?.states || {};
+  const match = draft.match || {};
+  let entityId = match.entity_id || "";
+  if (match.kind === "filter") {
+    const excluded = new Set([
+      ...String(match.excludeText || "").split("\n").map((id) => id.trim()),
+      ...channels.map((channel) => channel.entity_id),
+    ]);
+    let pattern;
+    try {
+      pattern = new RegExp(`^${String(match.pattern || "").replace(/[.+^${}()|\\]/g, "\\$&").replace(/\[!([^\]]*)\]/g, "[^$1]").replace(/\*/g, ".*").replace(/\?/g, ".")}$`);
+    } catch { /* An unfinished pattern has no preview entity. */ }
+    const candidates = Object.keys(states).filter((id) => pattern?.test(id) && !excluded.has(id))
+      .sort((a, b) => (states[a].attributes?.friendly_name || a).toLowerCase().localeCompare((states[b].attributes?.friendly_name || b).toLowerCase()) || a.localeCompare(b));
+    // Keep inactive rules previewable while preferring a currently active match.
+    entityId = candidates.find((id) => previewMatches(states[id], match)) || candidates[0] || "";
+  }
+  const entity = states[entityId];
+  return {
+    state: entity?.state || "",
+    name: entity?.attributes?.friendly_name || entityId,
+    entity_id: entityId,
+    rule_id: draft.id || "preview",
+  };
+}
+
+export function templatePreviewRequest(draft, hass, channels = []) {
+  const fields = PREVIEW_FIELDS.filter((key) => hasTemplate(String(draft[key] || "")));
+  if (!fields.length) return null;
+  // Capture strings before JSON encoding so HA's automatic result parsing
+  // preserves rendered text such as "False", "0012", and embedded quotes.
+  const captures = fields.map((key, index) => `{% set _banner_preview_${index} %}${String(draft[key]).trim()}{% endset %}`).join("");
+  const output = fields.map((key, index) => `${JSON.stringify(key)}: _banner_preview_${index}`).join(", ");
+  return {
+    type: "render_template",
+    template: `${captures}{{ {${output}} | to_json }}`,
+    variables: previewVariables(draft, hass, channels),
+    report_errors: true,
+  };
+}
+
 function textbox(value) {
   const node = document.createElement("textarea");
   node.value = value == null ? "" : String(value);
@@ -424,6 +491,7 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       this._users = null;
       this._usersError = "";
       this._usersPromise = null;
+      this._previewPaused = false;
     }
 
     set hass(value) {
@@ -432,6 +500,7 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       this.shadowRoot.querySelectorAll("ha-selector, ha-service-picker").forEach((node) => {
         node.hass = value;
       });
+      if (this._view === "rule") this._syncPreview();
       if (!this._started) {
         this._started = true;
         this._load().catch((err) => {
@@ -446,8 +515,15 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
     }
 
     connectedCallback() {
+      this._previewPaused = false;
       if (!this._started && this._hass) this.hass = this._hass;
       if (!this.shadowRoot.childElementCount) this._render();
+      if (this._view === "rule") this._syncPreview();
+    }
+
+    disconnectedCallback() {
+      this._previewPaused = true;
+      this._clearTemplatePreview();
     }
 
     async _load() {
@@ -458,6 +534,7 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
     }
 
     _render() {
+      if (this._view !== "rule") this._clearTemplatePreview();
       const root = this.shadowRoot;
       root.replaceChildren();
       const style = document.createElement("style");
@@ -527,6 +604,7 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
     }
 
     _openEditor(kind, record) {
+      this._clearTemplatePreview();
       this._view = kind;
       this._errors = {};
       this._draft = kind === "channel" ? channelDraft(record) : ruleDraft(record);
@@ -708,7 +786,8 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       const draft = this._draft;
       const errors = this._errors || {};
       this._formChrome(page, draft.id ? "Edit rule" : "Add rule");
-      page.append(this._preview(draft));
+      page.append(this._preview(draft), el("p", "help preview-status"));
+      page.querySelector(".preview-status").setAttribute("aria-live", "polite");
 
       const headline = textbox(draft.headline);
       headline.addEventListener("input", () => { draft.headline = headline.value; this._syncPreview(); });
@@ -752,14 +831,16 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
         },
         draft.id ? () => this._delete("rule", draft.id) : null,
       );
+      this._scheduleTemplatePreview();
+      this._updatePreviewStatus();
     }
 
     _preview(draft) {
       const row = el("div", `preview${draft.secondary_position === "right" ? " secondary-right" : ""}`);
       const icon = document.createElement("ha-icon");
       const copy = el("div", "copy");
-      const background = displayValue(draft.background);
-      const color = displayValue(draft.color);
+      const background = displayValue(this._previewValue(draft, "background"));
+      const color = displayValue(this._previewValue(draft, "color"));
       const styles = this._stylesFor(draft);
       const look = severityLook({ severity: draft.severity, background, color }, styles);
       if (look) {
@@ -781,22 +862,95 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
         icon.style.color = look.iconColor;
       }
       const iconName = resolveIcon(
-        { icon: displayValue(draft.icon), severity: draft.severity },
+        { icon: displayValue(this._previewValue(draft, "icon")), severity: draft.severity },
         styles,
       ) || "mdi:information";
       icon.icon = iconName;
       icon.setAttribute("icon", iconName);
-      copy.querySelector(".headline").textContent = (draft.headline || "").trim() || "Headline";
-      copy.querySelector(".subtext").textContent = (draft.subtext || "").trim();
+      copy.querySelector(".headline").textContent = this._previewValue(draft, "headline") || "Headline";
+      copy.querySelector(".subtext").textContent = this._previewValue(draft, "subtext");
       copy.querySelector(".subtext").hidden = !copy.querySelector(".subtext").textContent;
       return row;
     }
 
-    _syncPreview() {
+    _previewValue(draft, key) {
+      const source = String(draft[key] || "").trim();
+      if (!hasTemplate(source)) {
+        const variables = previewVariables(draft, this._hass, this._data.channels || []);
+        return source.replaceAll("{name}", variables.name).replaceAll("{state}", variables.state);
+      }
+      const task = this._previewTask;
+      const request = templatePreviewRequest(draft, this._hass, this._data.channels || []);
+      if (!task || task.key !== JSON.stringify(request) || task.error) return "";
+      const value = String(task.result?.[key] ?? "").trim();
+      if (key === "icon" && !/^mdi:[a-z0-9-]+$/.test(value)) return "";
+      if ((key === "color" || key === "background") && !/^#[0-9A-Fa-f]{6}$/.test(value)) return "";
+      return value;
+    }
+
+    _updatePreviewStatus() {
+      const status = this.shadowRoot.querySelector(".preview-status");
+      if (!status) return;
+      const task = this._previewTask;
+      status.textContent = task?.error ? `Preview: ${task.error}` : task && !task.result ? "Rendering preview…" : "";
+      status.classList.toggle("error", Boolean(task?.error));
+    }
+
+    _clearTemplatePreview() {
+      const task = this._previewTask;
+      this._previewTask = null;
+      if (task?.timer) this.ownerDocument.defaultView.clearTimeout(task.timer);
+      if (task?.unsubscribe) {
+        try { Promise.resolve(task.unsubscribe()).catch(() => {}); }
+        catch { /* The connection may already be closed during cleanup. */ }
+      }
+    }
+
+    _scheduleTemplatePreview() {
+      if (this._previewPaused) return;
+      const request = templatePreviewRequest(this._draft, this._hass, this._data.channels || []);
+      const key = JSON.stringify(request);
+      if (this._previewTask?.key === key && this._previewTask.connection === this._hass?.connection) return;
+      this._clearTemplatePreview();
+      if (!request) return;
+      const task = { key, request, connection: this._hass?.connection, result: null, error: "" };
+      this._previewTask = task;
+      task.timer = this.ownerDocument.defaultView.setTimeout(() => this._startTemplatePreview(task), 250);
+    }
+
+    async _startTemplatePreview(task) {
+      if (this._previewPaused || !task || this._previewTask !== task || task.started) return;
+      task.started = true;
+      this.ownerDocument.defaultView.clearTimeout(task.timer);
+      task.timer = null;
+      try {
+        if (!task.connection?.subscribeMessage) throw new Error("Home Assistant template renderer is unavailable.");
+        const unsubscribe = await task.connection.subscribeMessage((event) => {
+          if (this._previewTask !== task) return;
+          if (event.error) {
+            task.error = event.error;
+            task.result = null;
+          } else if (event.result && typeof event.result === "object") {
+            task.result = event.result;
+            task.error = "";
+          }
+          this._syncPreview(false);
+        }, task.request);
+        if (this._previewTask !== task) await unsubscribe();
+        else task.unsubscribe = unsubscribe;
+      } catch (error) {
+        if (this._previewTask !== task) return;
+        task.error = error.message || "Template could not be rendered.";
+        this._syncPreview(false);
+      }
+    }
+
+    _syncPreview(schedule = true) {
       const preview = this.shadowRoot.querySelector(".preview");
       if (!preview || this._view !== "rule") return;
-      const next = this._preview(this._draft);
-      preview.replaceWith(next);
+      if (schedule) this._scheduleTemplatePreview();
+      preview.replaceWith(this._preview(this._draft));
+      this._updatePreviewStatus();
     }
 
     _stylesFor(draft) {
@@ -886,7 +1040,7 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       if (draft.match.kind === "filter") {
         const pattern = input("text", draft.match.pattern);
         pattern.placeholder = "sensor.*battery*";
-        pattern.addEventListener("input", () => { draft.match.pattern = pattern.value; });
+        pattern.addEventListener("input", () => { draft.match.pattern = pattern.value; this._syncPreview(); });
         wrap.append(field("Pattern", pattern, "", [errors.match_pattern]));
         const attribute = input("text", draft.match.attribute);
         attribute.addEventListener("input", () => { draft.match.attribute = attribute.value; });
@@ -895,6 +1049,7 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
         const attribute = this._attributeControl(draft.match);
         const entity = this._picker("entity", draft.match.entity_id, "Entity", "binary_sensor.front_door", (value) => {
           draft.match.entity_id = value;
+          this._syncPreview();
           if (attribute.localName === "ha-selector") attribute.selector = { attribute: { entity_id: value } };
         });
         wrap.append(field("Entity", entity, "", [errors.match_entity]));
@@ -912,7 +1067,7 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
       if (draft.match.kind === "filter") {
         const exclude = document.createElement("textarea");
         exclude.value = draft.match.excludeText || "";
-        exclude.addEventListener("input", () => { draft.match.excludeText = exclude.value; });
+        exclude.addEventListener("input", () => { draft.match.excludeText = exclude.value; this._syncPreview(); });
         wrap.append(field("Exclude", exclude, HELP.rule.exclude, []));
       }
       return wrap;

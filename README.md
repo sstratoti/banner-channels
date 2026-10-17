@@ -80,6 +80,8 @@ The sidebar uses Home Assistant's native entity, service, and icon pickers. Enti
 }
 ```
 
+The editor preview renders Jinja through Home Assistant and updates when referenced entities change, without saving the rule. The form retains the template source. Invalid templates show a preview error. Plain `{name}` and `{state}` replacements use the selected entity; pattern rules prefer the first entity that satisfies the primary condition, ordered by friendly name and respecting exclusions. If none currently satisfies it, the first candidate is used so inactive alerts remain previewable.
+
 A condition compares the entity state unless its optional `attribute` names a direct entity attribute (for example `current_temperature`). Attribute-only updates are evaluated too. Missing/null attributes never match. Text comparisons use lowercase `true`/`false` for boolean attributes. `{state}` and the Jinja `state` variable still mean the entity's actual state.
 
 The primary match is always required. `conditions_logic: and` requires every additional condition; `or` requires at least one. With no additional conditions, only the primary match and optional time window apply. Existing `also` rules open as one additional AND condition and are saved in the new format.

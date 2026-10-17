@@ -321,6 +321,8 @@ class BannerChannelCardEditor extends LitElement {
   setConfig(config) {
     const source = config || {};
     this._config = {
+      ...source,
+      type: source.type || "custom:banner-channel",
       entity: source.entity || "",
       height: source.height,
       headline_size: source.headline_size,
@@ -339,7 +341,9 @@ class BannerChannelCardEditor extends LitElement {
         .computeLabel=${(schema) => cardEditorLabel(schema)}
         .computeHelper=${(schema) => cardEditorHelper(schema)}
         @value-changed=${(event) => {
-          fireEvent(this, "config-changed", { config: event.detail.value });
+          event.stopPropagation();
+          this._config = { ...this._config, ...event.detail.value, type: this._config.type };
+          fireEvent(this, "config-changed", { config: this._config });
         }}
       ></ha-form>
     `;

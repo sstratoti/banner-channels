@@ -164,3 +164,52 @@ test("taps on different alerts never combine into a double tap", async (t) => {
   press(card); release(card); tick(50); card._index = 1; press(card); release(card); tick(300);
   assert.deepEqual(services.map((s) => s[2].entity_id), ["light.one", "light.two"]);
 });
+
+// Use the browser event realm for the production config event while retaining
+// Node's Event globally for the test runner outside this synchronous dispatch.
+function changeCardForm(editor, value) {
+  const originalEvent = globalThis.Event;
+  globalThis.Event = window.Event;
+  try {
+    editor.shadowRoot.querySelector("ha-form").dispatchEvent(new window.CustomEvent("value-changed", {detail: {value}, bubbles: true, composed: true}));
+  } finally {
+    globalThis.Event = originalEvent;
+  }
+}
+
+test("dashboard channel changes preserve card type and unrelated YAML settings", async (t) => {
+  for (const type of ["custom:banner-channel", "custom:banner-channel-card"]) {
+    const editor = document.createElement("banner-channel-card-editor");
+    const source = {type, entity: "sensor.old", height: 96, grid_options: {columns: 12, rows: 2}, visibility: [{condition: "user", users: ["one"]}]};
+    editor.setConfig(source);
+    document.body.append(editor);
+    t.after(() => editor.remove());
+    await editor.updateComplete;
+    const updates = [];
+    editor.addEventListener("config-changed", (event) => updates.push(event.detail.config));
+    changeCardForm(editor, {entity: "sensor.new"});
+    assert.equal(updates[0].type, type);
+    assert.equal(updates[0].entity, "sensor.new");
+    assert.equal(updates[0].height, 96);
+    assert.deepEqual(updates[0].grid_options, {columns: 12, rows: 2});
+    assert.deepEqual(updates[0].visibility, [{condition: "user", users: ["one"]}]);
+    assert.equal(source.entity, "sensor.old");
+    await editor.updateComplete;
+    changeCardForm(editor, {height: undefined});
+    assert.equal(updates[1].entity, "sensor.new");
+    assert.equal(updates[1].type, type);
+    assert.equal(updates[1].height, undefined);
+  }
+});
+
+test("dashboard editor supplies the canonical card type when it is missing", async (t) => {
+  const editor = document.createElement("banner-channel-card-editor");
+  editor.setConfig({entity: "sensor.old"});
+  document.body.append(editor);
+  t.after(() => editor.remove());
+  await editor.updateComplete;
+  let config;
+  editor.addEventListener("config-changed", (event) => {config = event.detail.config;});
+  changeCardForm(editor, {entity: "sensor.new"});
+  assert.equal(config.type, "custom:banner-channel");
+});

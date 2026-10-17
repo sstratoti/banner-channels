@@ -47,6 +47,8 @@ Create a channel: name, rotate interval, badge, and empty behavior. Saving it cr
 
 Create a rule and tag it with one or more channels. A rule with no channel tags produces no slides. Fields: headline, subtext, icon, background and text colors, channels, match, an optional time window, additional AND/OR conditions, visibility, secondary positioning, and tap/hold/double-tap actions. In the headline or the subtext, `{name}` and `{state}` are replaced for each match. Text that contains `{{` or `{%` is a Jinja template, with variables `state`, `entity_id`, `name`, and `rule_id`. The icon, background, and text color accept the same templates. A rendered icon must be an `mdi:` name. A rendered color must look like `#c62828`.
 
+A primary match can target one entity or use a pattern such as `sensor.*battery*` to make a slide for each matching entity. Patterns support `*` and `?`; you can exclude specific entity IDs. A match compares state by default, or the named entity attribute when **Attribute** is set. The same state-or-attribute comparison is available for each additional condition.
+
 The sidebar uses Home Assistant's native entity, service, and icon pickers. Entity pickers also appear in additional conditions and in all three action editors, including service targets. Leave a Toggle or More-info entity blank to use the matched entity. For an alert icon template, enable **Use template**; existing icon templates open in that mode automatically. Channel all-clear and severity icons use the icon picker too. Text inputs remain available if the native controls cannot load.
 
 ```json
@@ -88,7 +90,7 @@ The primary match is always required. `conditions_logic: and` requires every add
 
 **Secondary value position** places the existing subtext below or to the right of the headline; severity stays above. **Visible to** offers Everyone, Admins, Non-admins, or Specific users. Specific users shows a selectable list of active Home Assistant users by name and stores their IDs, so renaming a user preserves the selection. This filters dashboard display only: the shared channel sensor still contains all active alerts. The dashboard counter and rotation count only visible alerts. If every alert is hidden for the logged-in user, the card uses the channel’s normal hide/all-clear setting.
 
-Tap executes immediately unless Double tap has an enabled action. With Double tap configured, a single tap waits 250 ms; two taps run only Double tap. Hold uses a 500 ms press. Movement, card removal, or an alert becoming hidden cancels pending gestures. Actions remain tied to the pressed alert if the carousel rotates.
+Tap, Hold, and Double tap support more-info, toggle, navigate, URL, call-service, or none. Leaving Tap blank opens more-info for the matched entity; blank Hold and Double tap do nothing. Toggle and More-info can use a different entity or default to the matched entity. Call-service takes a service name such as `light.turn_on`, an optional target entity, and optional JSON service data. Tap executes immediately unless Double tap has an enabled action. With Double tap configured, a single tap waits 250 ms; two taps run only Double tap. Hold uses a 500 ms press. Movement, card removal, or an alert becoming hidden cancels pending gestures. Actions remain tied to the pressed alert if the carousel rotates.
 
 On a dashboard, choose Add card and pick Banner Channel. The editor asks for the channel sensor. The same card in YAML is:
 
@@ -101,6 +103,8 @@ subtext_size: 20
 ```
 
 `height`, `headline_size`, and `subtext_size` are optional pixels. Leave them out for 80, 22, and 16. The icon is half the height. A wall dashboard can use the larger numbers. A phone can use something like `height: 52`, `headline_size: 15`, and `subtext_size: 12`. `align` is `left` or `center`. Left is the default. Center places the icon and text in the middle, and the slide counter stays at the top right.
+
+`height` is the banner's minimum height. When the dashboard layout gives the card a taller area, the banner stretches to fill it. The visual editor preserves the card type and other card-level YAML settings when you change the selected channel.
 
 The sensor state is the active slide count. Rotation, colors, and the alert list come from the sensor:
 

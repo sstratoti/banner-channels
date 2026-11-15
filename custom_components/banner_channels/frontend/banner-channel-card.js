@@ -1,5 +1,5 @@
 import {
-  validateConfig, visibleFeed, stubEntity, cardLayout, CARD_EDITOR_SCHEMA, cardEditorLabel, cardEditorHelper, feedSignature, nextIndex, viewMode, slideCounter, describeAction, resolveIcon, severityLook,
+  validateConfig, visibleFeed, stubEntity, cardLayout, CARD_EDITOR_SCHEMA, cardEditorLabel, cardEditorHelper, feedSignature, nextIndex, viewMode, slideCounter, describeAction, resolveIcon, severityLook, swipeDirection, stepIndex,
 } from "./banner-core.js";
 
 const Panel = customElements.get("ha-panel-lovelace") || customElements.get("hui-view");
@@ -105,6 +105,7 @@ class BannerChannelCard extends LitElement {
   }
 
   _onPointerDown(event) {
+    if (this._press?.moved) this._clearPointer();
     if (event.button !== 0 || this._press || this._mode !== "alerts") return;
     const alert = this._currentAlert();
     if (!alert) return;
@@ -127,10 +128,14 @@ class BannerChannelCard extends LitElement {
   }
 
   _onPointerMove(event) {
-    if (!this._press || event.pointerId !== this._press.pointerId) return;
-    const dx = event.clientX - this._press.x;
-    const dy = event.clientY - this._press.y;
-    if ((dx * dx) + (dy * dy) > 100) this._cancelGestures();
+    const press = this._press;
+    if (!press || press.moved || event.pointerId !== press.pointerId) return;
+    const dx = event.clientX - press.x;
+    const dy = event.clientY - press.y;
+    if ((dx * dx) + (dy * dy) <= 100) return;
+    press.moved = true;
+    press.previousTap = null;
+    if (this._holdTimer) { clearTimeout(this._holdTimer); this._holdTimer = null; }
   }
 
   _onPointerUp(event) {
@@ -139,6 +144,10 @@ class BannerChannelCard extends LitElement {
     const held = this._holdFired;
     this._clearPointer();
     if (held) return;
+    if (pressed.moved) {
+      this._swipe(swipeDirection(event?.clientX - pressed.x, event?.clientY - pressed.y));
+      return;
+    }
     const previous = pressed.previousTap;
     if (previous && Date.now() - previous.at < 250) {
       this._runAction("double_tap", pressed.alert);
@@ -156,6 +165,14 @@ class BannerChannelCard extends LitElement {
       this._pendingTap = null;
       if (pending) this._runAction("tap", pending.alert);
     }, 250);
+  }
+
+  _swipe(direction) {
+    const alerts = this._attrs?.alerts || [];
+    if (!direction || this._mode !== "alerts" || alerts.length < 2) return;
+    this._index = stepIndex(this._index, alerts.length, direction);
+    this._restartRotation();
+    this._rev++;
   }
 
   _currentAlert() {
@@ -231,6 +248,7 @@ class BannerChannelCard extends LitElement {
         flex-direction: column;
         height: 100%;
         overflow: hidden;
+        touch-action: pan-y;
       }
       .row {
         position: relative;

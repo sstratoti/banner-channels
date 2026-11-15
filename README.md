@@ -92,6 +92,8 @@ The primary match is always required. `conditions_logic: and` requires every add
 
 Tap, Hold, and Double tap support more-info, toggle, navigate, URL, call-service, or none. Leaving Tap blank opens more-info for the matched entity; blank Hold and Double tap do nothing. Toggle and More-info can use a different entity or default to the matched entity. Call-service takes a service name such as `light.turn_on`, an optional target entity, and optional JSON service data. Tap executes immediately unless Double tap has an enabled action. With Double tap configured, a single tap waits 250 ms; two taps run only Double tap. Hold uses a 500 ms press. Movement, card removal, or an alert becoming hidden cancels pending gestures. Actions remain tied to the pressed alert if the carousel rotates.
 
+When a channel shows more than one alert, swipe left on the card for the next alert or right for the previous one; the ends wrap around. Only swipes that start on the card count, and scrolling the page vertically over the card still works. A swipe never runs the tap, hold, or double-tap action. After a swipe, rotation starts a fresh interval from the alert you chose; with `rotate_interval` at `0` the card stays on it. Each card keeps its own position, so swiping on one dashboard does not change any other.
+
 On a dashboard, choose Add card and pick Banner Channel. The editor asks for the channel sensor. The same card in YAML is:
 
 ```yaml

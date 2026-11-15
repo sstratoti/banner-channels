@@ -85,6 +85,14 @@ function press(card, id = 1) {
 function release(card, id = 1) {
   card.shadowRoot.querySelector("ha-card").dispatchEvent(new window.PointerEvent("pointerup", {button: 0, pointerId: id}));
 }
+function move(card, x, y = 0, id = 1) {
+  card.shadowRoot.querySelector("ha-card").dispatchEvent(new window.PointerEvent("pointermove", {pointerId: id, clientX: x, clientY: y}));
+}
+function swipe(card, dx, dy = 0, id = 1) {
+  press(card, id);
+  move(card, dx, dy, id);
+  card.shadowRoot.querySelector("ha-card").dispatchEvent(new window.PointerEvent("pointerup", {button: 0, pointerId: id, clientX: dx, clientY: dy}));
+}
 function clock(t) {
   t.mock.timers.enable({apis: ["setTimeout", "Date"], now: 1000});
   return (milliseconds) => t.mock.timers.tick(milliseconds);
@@ -245,4 +253,109 @@ test("scheduled rotation swaps on the interval and stops after disconnect", asyn
   card.remove();
   t.mock.timers.tick(2000);
   assert.equal(card._currentAlert().id, "one");
+});
+
+test("swipe left shows the next alert and swipe right the previous, wrapping", async (t) => {
+  const {card, services} = await cardFor(t, [alert("one"), alert("two"), alert("three")]);
+  swipe(card, -60);
+  await card.updateComplete;
+  assert.equal(card.shadowRoot.querySelector(".primary").textContent, "two");
+  assert.equal(card.shadowRoot.querySelector(".counter").textContent, "2/3");
+  swipe(card, -60);
+  swipe(card, -60);
+  await card.updateComplete;
+  assert.equal(card._currentAlert().id, "one");
+  swipe(card, 60);
+  await card.updateComplete;
+  assert.equal(card.shadowRoot.querySelector(".primary").textContent, "three");
+  swipe(card, 60);
+  assert.equal(card._currentAlert().id, "two");
+  assert.equal(services.length, 0);
+});
+
+test("swipe never runs tap, hold, or double-tap actions", async (t) => {
+  const actions = {double_tap_action: {action: "toggle", entity: "light.double"}, hold_action: {action: "toggle", entity: "light.hold"}};
+  const {card, services} = await cardFor(t, [alert("one", actions), alert("two", actions)]);
+  const tick = clock(t);
+  press(card); release(card);
+  tick(100);
+  press(card); move(card, -60); tick(600);
+  card.shadowRoot.querySelector("ha-card").dispatchEvent(new window.PointerEvent("pointerup", {button: 0, pointerId: 1, clientX: -60, clientY: 0}));
+  tick(1000);
+  assert.equal(services.length, 0);
+  assert.equal(card._currentAlert().id, "two");
+});
+
+test("swipe after a hold has fired does not navigate", async (t) => {
+  const {card, services} = await cardFor(t, [alert("one", {hold_action: {action: "toggle", entity: "light.hold"}}), alert("two")]);
+  const tick = clock(t);
+  press(card);
+  tick(500);
+  move(card, -60);
+  card.shadowRoot.querySelector("ha-card").dispatchEvent(new window.PointerEvent("pointerup", {button: 0, pointerId: 1, clientX: -60, clientY: 0}));
+  assert.deepEqual(services.map((s) => s[2].entity_id), ["light.hold"]);
+  assert.equal(card._currentAlert().id, "one");
+});
+
+test("swipe is a no-op with a single alert", async (t) => {
+  const {card, services} = await cardFor(t, [alert("one")]);
+  swipe(card, -60);
+  swipe(card, 60);
+  assert.equal(card._index, 0);
+  assert.equal(card._currentAlert().id, "one");
+  assert.equal(services.length, 0);
+});
+
+test("short and vertical drags neither navigate nor run actions", async (t) => {
+  const {card, services} = await cardFor(t, [alert("one"), alert("two")]);
+  swipe(card, -25);
+  swipe(card, 39);
+  swipe(card, -50, 80);
+  swipe(card, 0, 120);
+  assert.equal(card._currentAlert().id, "one");
+  assert.equal(services.length, 0);
+});
+
+test("pointercancel during a drag does not navigate and frees the next press", async (t) => {
+  const {card, services} = await cardFor(t, [alert("one"), alert("two")]);
+  press(card); move(card, -60);
+  card.shadowRoot.querySelector("ha-card").dispatchEvent(new window.PointerEvent("pointercancel", {pointerId: 1}));
+  card.shadowRoot.querySelector("ha-card").dispatchEvent(new window.PointerEvent("pointerup", {button: 0, pointerId: 1, clientX: -60, clientY: 0}));
+  assert.equal(card._currentAlert().id, "one");
+  press(card); release(card);
+  assert.deepEqual(services.map((s) => s[2].entity_id), ["light.one"]);
+});
+
+test("a drag whose release was lost does not block the next press", async (t) => {
+  const {card, services} = await cardFor(t, [alert("one"), alert("two")]);
+  press(card); move(card, -60);
+  press(card, 2); release(card, 2);
+  assert.deepEqual(services.map((s) => s[2].entity_id), ["light.one"]);
+  assert.equal(card._currentAlert().id, "one");
+});
+
+test("swipe restarts the rotation timer", async (t) => {
+  t.mock.timers.enable({apis: ["setTimeout", "setInterval", "Date"], now: 1000});
+  const {card} = await cardFor(t, [alert("one"), alert("two"), alert("three")], {attributes: {rotate_interval: 2}});
+  t.mock.timers.tick(1500);
+  swipe(card, -60);
+  assert.equal(card._currentAlert().id, "two");
+  t.mock.timers.tick(1999);
+  assert.equal(card._currentAlert().id, "two");
+  t.mock.timers.tick(1);
+  assert.equal(card._currentAlert().id, "three");
+});
+
+test("swipe works with rotation off and stays on the chosen alert", async (t) => {
+  t.mock.timers.enable({apis: ["setTimeout", "setInterval", "Date"], now: 1000});
+  const {card} = await cardFor(t, [alert("one"), alert("two")]);
+  swipe(card, -60);
+  t.mock.timers.tick(60000);
+  assert.equal(card._currentAlert().id, "two");
+});
+
+test("card keeps vertical page scrolling and takes horizontal drags", () => {
+  const styles = customElements.get("banner-channel").styles;
+  const text = (Array.isArray(styles) ? styles : [styles]).map((sheet) => sheet.cssText).join("\n");
+  assert.match(text, /touch-action:\s*pan-y/);
 });

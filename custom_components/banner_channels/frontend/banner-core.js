@@ -231,6 +231,21 @@ export function nextIndex(current, length) {
   return (current + 1) % length;
 }
 
+export function stepIndex(current, length, delta) {
+  const count = Number(length);
+  if (!Number.isFinite(count) || count < 2) return 0;
+  const start = Number.isFinite(Number(current)) ? Number(current) : 0;
+  return (((start + delta) % count) + count) % count;
+}
+
+export function swipeDirection(dx, dy) {
+  const x = Number(dx);
+  const y = Number(dy);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return 0;
+  if (Math.abs(x) < 40 || Math.abs(x) < 1.5 * Math.abs(y)) return 0;
+  return x < 0 ? 1 : -1;
+}
+
 export function describeAction(action) {
   if (!action || !action.action || action.action === "none") return null;
   if (action.action === "more-info" && action.entity) return { type: "more-info", entity: action.entity };

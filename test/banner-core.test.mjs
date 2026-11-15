@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  validateConfig, stubEntity, cardLayout, cardEditorLabel, CARD_EDITOR_SCHEMA, feedSignature, nextIndex, viewMode, showBadge, slideCounter, describeAction, resolveIcon, severityLook,
+  validateConfig, stubEntity, cardLayout, cardEditorLabel, CARD_EDITOR_SCHEMA, feedSignature, nextIndex, viewMode, showBadge, slideCounter, describeAction, resolveIcon, severityLook, swipeDirection, stepIndex,
 } from "../custom_components/banner_channels/frontend/banner-core.js";
 
 test("validateConfig requires an entity string", () => {
@@ -231,4 +231,34 @@ test("feed signature includes visibility secondary position and double tap", () 
   for (const options of [{secondary_position: "right"}, {visibility: {mode: "admin"}}, {double_tap_action: {action: "toggle", entity: "light.x"}}]) {
     assert.notEqual(feedSignature({alerts: [{...base.alerts[0], ...options}]}), feedSignature(base));
   }
+});
+
+test("swipeDirection needs 40px of mostly horizontal travel", () => {
+  assert.equal(swipeDirection(-40, 0), 1);
+  assert.equal(swipeDirection(-120, 30), 1);
+  assert.equal(swipeDirection(40, 0), -1);
+  assert.equal(swipeDirection(90, -20), -1);
+  assert.equal(swipeDirection(-39, 0), 0);
+  assert.equal(swipeDirection(39, 0), 0);
+  assert.equal(swipeDirection(0, 0), 0);
+  assert.equal(swipeDirection(-60, 41), 0);
+  assert.equal(swipeDirection(-60, 40), 1);
+  assert.equal(swipeDirection(50, -80), 0);
+  assert.equal(swipeDirection(0, 200), 0);
+  assert.equal(swipeDirection(NaN, 0), 0);
+  assert.equal(swipeDirection(-60, NaN), 0);
+  assert.equal(swipeDirection(undefined, undefined), 0);
+  assert.equal(swipeDirection(-Infinity, 0), 0);
+});
+
+test("stepIndex moves both ways and wraps", () => {
+  assert.equal(stepIndex(0, 3, 1), 1);
+  assert.equal(stepIndex(2, 3, 1), 0);
+  assert.equal(stepIndex(1, 3, -1), 0);
+  assert.equal(stepIndex(0, 3, -1), 2);
+  assert.equal(stepIndex(0, 2, -1), 1);
+  assert.equal(stepIndex(0, 1, 1), 0);
+  assert.equal(stepIndex(0, 1, -1), 0);
+  assert.equal(stepIndex(4, 0, 1), 0);
+  assert.equal(stepIndex(undefined, 3, 1), 1);
 });
